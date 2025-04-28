@@ -1,0 +1,117 @@
+<!-- db/public/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>COVID-19 Global Dashboard</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+</head>
+<body>
+  <div class="loading-screen">
+    <div class="spinner"></div>
+    <p>Loading COVID-19 Data...</p>
+  </div>
+
+  <header class="header">
+    <div class="header-content">
+      <h1>COVID-19 Global Dashboard</h1>
+      <p>Tracking the pandemic's impact across the world with up-to-date statistics and visualizations</p>
+    </div>
+  </header>
+
+  <main class="dashboard-container">
+    <section class="controls-section">
+      <div class="control-group">
+        <label for="country-select">Select Country:</label>
+        <select id="country-select" class="dropdown">
+          <option value="">Loading countries...</option>
+        </select>
+      </div>
+      
+      <div class="control-group">
+        <label for="metric-select">Primary Metric:</label>
+        <select id="metric-select" class="dropdown">
+          <option value="TotalCases">Total Cases</option>
+          <option value="NewCases">New Cases</option>
+          <option value="TotalDeaths">Total Deaths</option>
+          <option value="NewDeaths">New Deaths</option>
+          <option value="TotalVaccinations">Total Vaccinations</option>
+          <option value="CasesPerThousand">Cases per 1000</option>
+        </select>
+      </div>
+      
+      <div class="control-group">
+        <label for="date-range">Date Range:</label>
+        <select id="date-range" class="dropdown">
+          <option value="all">All Time</option>
+          <option value="1y">Last Year</option>
+          <option value="6m">Last 6 Months</option>
+          <option value="3m">Last 3 Months</option>
+        </select>
+      </div>
+      
+      <button id="update-btn" class="btn-primary">Update Dashboard</button>
+    </section>
+
+    <section class="summary-cards">
+      <div class="card confirmed">
+        <h3>Total Confirmed</h3>
+        <p id="total-cases">-</p>
+        <div class="card-footer">Worldwide</div>
+      </div>
+      
+      <div class="card deaths">
+        <h3>Total Deaths</h3>
+        <p id="total-deaths">-</p>
+        <div class="card-footer">Worldwide</div>
+      </div>
+      
+      <div class="card vaccinated">
+        <h3>Total Vaccinated</h3>
+        <p id="total-vaccinations">-</p>
+        <div class="card-footer">Worldwide</div>
+      </div>
+    </section>
+
+    <section class="charts-section">
+      <div class="chart-container">
+        <canvas id="timeSeriesChart"></canvas>
+        <div class="chart-title">COVID-19 Time Series</div>
+      </div>
+      
+      <div class="chart-container">
+        <canvas id="mapChart"></canvas>
+        <div class="chart-title">Global Cases Distribution</div>
+      </div>
+      
+      <div class="chart-container">
+        <canvas id="barChart"></canvas>
+        <div class="chart-title">Top 10 Countries by Selected Metric</div>
+      </div>
+      
+      <div class="chart-container">
+        <canvas id="pieChart"></canvas>
+        <div class="chart-title">Cases by Continent</div>
+      </div>
+      
+      <div class="chart-container">
+        <canvas id="scatterChart"></canvas>
+        <div class="chart-title">Cases vs Deaths per Country</div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <p>Data sourced from Our World in Data | Last updated: <span id="last-updated">-</span></p>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-geo@3.6.0/build/Chart.Geo.min.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/charts.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
