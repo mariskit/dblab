@@ -1,6 +1,5 @@
 const express = require('express');
-const poolPromise = require('./db'); // Importa directamente el poolPromise
-
+const { poolPromise, sql } = require('./db'); // Asegúrate de importar sql aquí
 const router = express.Router();
 
 // Ruta para obtener estadísticas globales actualizada
@@ -53,7 +52,7 @@ router.get('/api/time-series', async (req, res) => {
     const validMetrics = ['TotalCases', 'NewCases', 'TotalDeaths', 'NewDeaths', 'TotalVaccinations'];
     
     if (!validMetrics.includes(metric)) {
-      return res.status(400).send('Invalid metric');
+      return res.status(400).json({ error: 'Invalid metric parameter' });
     }
 
     let dateCondition = '';
@@ -64,11 +63,11 @@ router.get('/api/time-series', async (req, res) => {
     }
 
     const pool = await poolPromise;
-    const query = `
+    let query = `
       SELECT 
         c.CountryName,
-        cd.RecordDate,
-        cd.${metric} AS Value
+        FORMAT(cd.RecordDate, 'yyyy-MM-dd') AS RecordDate,
+        CAST(cd.${metric} AS FLOAT) AS Value
       FROM CovidData cd
       JOIN Countries c ON cd.CountryCode = c.CountryCode
       WHERE cd.${metric} IS NOT NULL
@@ -90,7 +89,15 @@ router.get('/api/time-series', async (req, res) => {
     
     res.json(formattedData);
   } catch (err) {
-    res.status(500).send(err.message);
+    console.error('Error en time-series:', {
+      message: err.message,
+      stack: err.stack,
+      query: err.query || 'No query information'
+    });
+    res.status(500).json({ 
+      error: 'Error interno del servidor',
+      details: err.message
+    });
   }
 });
 
@@ -101,7 +108,7 @@ router.get('/api/geo-data', async (req, res) => {
     const validMetrics = ['TotalCases', 'TotalDeaths', 'TotalVaccinations'];
     
     if (!validMetrics.includes(metric)) {
-      return res.status(400).send('Invalid metric');
+      return res.status(400).json({ error: 'Invalid metric parameter' });
     }
 
     let dateCondition = '';
@@ -113,6 +120,7 @@ router.get('/api/geo-data', async (req, res) => {
 
     const pool = await poolPromise;
     const result = await pool.request().query(`
+      -- Obtenemos los últimos datos para cada país
       WITH UltimosDatos AS (
         SELECT 
             CountryCode,
@@ -121,18 +129,39 @@ router.get('/api/geo-data', async (req, res) => {
         WHERE ${metric} IS NOT NULL
         ${dateCondition}
         GROUP BY CountryCode
+      ),
+      
+      -- Obtenemos los valores más recientes para la métrica seleccionada
+      DatosRecientes AS (
+        SELECT 
+          cd.CountryCode,
+          c.CountryName,
+          CAST(cd.${metric} AS FLOAT) AS value
+        FROM CovidData cd
+        JOIN UltimosDatos ud ON cd.CountryCode = ud.CountryCode AND cd.RecordDate = ud.UltimaFecha
+        JOIN Countries c ON cd.CountryCode = c.CountryCode
       )
+      
+      -- Combinamos con todos los países para asegurarnos de incluirlos todos
       SELECT 
         c.CountryName,
-        cd.${metric} AS value
-      FROM CovidData cd
-      JOIN UltimosDatos ud ON cd.CountryCode = ud.CountryCode AND cd.RecordDate = ud.UltimaFecha
-      JOIN Countries c ON cd.CountryCode = c.CountryCode
-      ORDER BY cd.${metric} DESC
+        COALESCE(dr.value, 0) AS value
+      FROM Countries c
+      LEFT JOIN DatosRecientes dr ON c.CountryName = dr.CountryName
+      ORDER BY c.CountryName
     `);
+    
     res.json(result.recordset);
   } catch (err) {
-    res.status(500).send(err.message);
+    console.error('Error en geo-data:', {
+      message: err.message,
+      stack: err.stack,
+      query: err.query || 'No query information'
+    });
+    res.status(500).json({ 
+      error: 'Error interno del servidor',
+      details: err.message
+    });
   }
 });
 

@@ -14,6 +14,12 @@ app.use(express.static(path.join(__dirname, '../public')));
 // Rutas
 app.use('/', routes);
 
+// Manejo de errores
+app.use((err, req, res, next) => {
+  console.error('Error general:', err.stack);
+  res.status(500).json({ error: 'Something went wrong!' });
+});
+
 app.listen(PORT, () => {
-  console.log(`Servidor ejecutándose en http://localhost:${PORT}`);
+  console.log(`Server running on http://localhost:${PORT}`);
 });

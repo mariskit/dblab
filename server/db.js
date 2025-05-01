@@ -1,3 +1,4 @@
+// db.js - Exportación corregida
 const sql = require('mssql');
 
 const config = {
@@ -16,7 +17,6 @@ const config = {
   }
 };
 
-// Crear la conexión pool
 const pool = new sql.ConnectionPool(config);
 const poolPromise = pool.connect()
   .then(() => {
@@ -28,5 +28,8 @@ const poolPromise = pool.connect()
     process.exit(1);
   });
 
-// Exportar directamente el poolPromise
-module.exports = poolPromise;
+// Exporta tanto poolPromise como sql
+module.exports = {
+  poolPromise,
+  sql
+};

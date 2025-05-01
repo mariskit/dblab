@@ -211,3 +211,9 @@ body {
     align-items: stretch;
   }
 }
+.no-data {
+  text-align: center;
+  color: #666;
+  font-style: italic;
+  padding: 20px;
+}

@@ -49,9 +49,11 @@
       <div class="control-group">
         <label for="metricSelect">Select Metric:</label>
         <select id="metricSelect">
+          <option value="TotalCases">Total Cases</option>
           <option value="NewCases">New Cases</option>
+          <option value="TotalDeaths">Total Deaths</option>
           <option value="NewDeaths">New Deaths</option>
-          <option value="TotalVaccinations">Vaccinations</option>
+          <option value="TotalVaccinations">Total Vaccinations</option>
         </select>
       </div>
       <div class="control-group">
@@ -70,18 +72,22 @@
         <h2>Time Series</h2>
         <div class="chart-container"></div>
       </div>
+      
       <div class="chart-card" id="geoChart">
         <h2>Geographical Distribution</h2>
         <div class="chart-container"></div>
       </div>
-      <div class="chart-card" id="comparisonChart">
-        <h2>Country Comparison</h2>
-        <div class="chart-container"></div>
-      </div>
+      
       <div class="chart-card" id="barChart">
         <h2>Top Countries</h2>
         <div class="chart-container"></div>
       </div>
+      
+      <div class="chart-card" id="mortalityRateChart">
+        <h2>Mortality Rate</h2>
+        <div class="chart-container"></div>
+      </div>
+      
       <div class="chart-card" id="scatterPlot">
         <h2>Cases vs Deaths</h2>
         <div class="chart-container"></div>

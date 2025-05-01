@@ -105,68 +105,82 @@ class Charts {
 
   static createGeoChart(containerId, data, metric) {
     const container = document.querySelector(`#${containerId} .chart-container`);
+    if (!container) {
+      console.error(`Container not found: #${containerId} .chart-container`);
+      return;
+    }
+    
     container.innerHTML = '';
     
     if (!data || data.length === 0) {
-      container.innerHTML = '<p class="no-data">No data available</p>';
+      container.innerHTML = '<p class="no-data">No geographical data available</p>';
       return;
     }
-
+  
     const width = container.clientWidth;
     const height = container.clientHeight;
-
+  
     const svg = d3.select(container)
       .append('svg')
       .attr('width', width)
       .attr('height', height);
-
+  
     const projection = d3.geoNaturalEarth1()
       .fitSize([width, height], { type: 'Sphere' });
-
+  
     const path = d3.geoPath().projection(projection);
-
-    // Create a color scale
+  
+    // Escala de colores mejorada
     const color = d3.scaleThreshold()
-      .domain([1000, 10000, 100000, 500000, 1000000, 5000000, 10000000, 50000000])
+      .domain([100, 1000, 10000, 100000, 500000, 1000000, 5000000, 10000000])
       .range(d3.schemeBlues[8]);
-
-    // Load world map data
+  
+    // Cargar datos del mapa mundial
     d3.json('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json').then(world => {
       const countries = topojson.feature(world, world.objects.countries).features;
-
-      // Create a map from our data for quick lookup
+  
+      // Crear un mapa para búsqueda rápida de valores
       const dataMap = {};
       data.forEach(d => {
         dataMap[d.CountryName] = +d.value;
       });
-
-      // Draw the countries
+  
+      // Dibujar los países
       svg.selectAll('path')
         .data(countries)
         .enter().append('path')
         .attr('d', path)
         .attr('fill', d => {
           const value = dataMap[d.properties.name];
-          return value ? color(value) : '#ccc';
+          return value !== undefined ? color(value) : '#ddd'; // Gris para países sin datos
         })
         .attr('stroke', '#fff')
         .attr('stroke-width', 0.5)
         .append('title')
         .text(d => {
           const value = dataMap[d.properties.name];
-          return `${d.properties.name}: ${value ? value.toLocaleString() : 'No data'}`;
+          return `${d.properties.name}: ${value !== undefined ? value.toLocaleString() : 'No data'}`;
         });
-
-      // Add legend
+  
+      // Leyenda mejorada
       const legend = svg.append('g')
-        .attr('transform', `translate(${width - 100}, ${height - 120})`);
-
+        .attr('transform', `translate(${width - 120}, ${height - 150})`);
+  
+      // Título de la leyenda
+      legend.append('text')
+        .attr('x', 0)
+        .attr('y', -10)
+        .text(metric.replace(/([A-Z])/g, ' $1').trim()) // Formatea "TotalCases" como "Total Cases"
+        .style('font-size', '12px')
+        .style('font-weight', 'bold');
+  
+      // Escala de colores
       legend.selectAll('rect')
-        .data(color.range().map(d => {
-          const range = color.invertExtent(d);
+        .data(color.range().map((d, i) => {
+          const extent = color.invertExtent(d);
           return {
             color: d,
-            label: range[0] ? `${range[0].toLocaleString()}` : 'No data'
+            label: extent[0] ? `${Math.round(extent[0]).toLocaleString()}+` : 'No data'
           };
         }))
         .enter().append('rect')
@@ -175,29 +189,39 @@ class Charts {
         .attr('x', 0)
         .attr('y', (d, i) => i * 15)
         .attr('fill', d => d.color);
-
-      legend.selectAll('text')
-        .data(color.range().map(d => {
-          const range = color.invertExtent(d);
+  
+      // Etiquetas de la leyenda
+      legend.selectAll('text.legend')
+        .data(color.range().map((d, i) => {
+          const extent = color.invertExtent(d);
           return {
             color: d,
-            label: range[0] ? `${range[0].toLocaleString()}` : 'No data'
+            label: extent[0] ? `${Math.round(extent[0]).toLocaleString()}+` : 'No data'
           };
         }))
         .enter().append('text')
+        .attr('class', 'legend')
         .attr('x', 15)
         .attr('y', (d, i) => i * 15 + 9)
         .text(d => d.label)
         .style('font-size', '10px');
+    }).catch(err => {
+      console.error('Error loading world map:', err);
+      container.innerHTML = '<p class="no-data">Error loading map data</p>';
     });
   }
 
   static createMortalityRateChart(containerId, data) {
     const container = document.querySelector(`#${containerId} .chart-container`);
+    if (!container) {
+      console.error(`Container not found: #${containerId} .chart-container`);
+      return;
+    }
+    
     container.innerHTML = '';
     
     if (!data || data.length === 0) {
-      container.innerHTML = '<p class="no-data">No data available</p>';
+      container.innerHTML = '<p class="no-data">No mortality rate data available</p>';
       return;
     }
 
