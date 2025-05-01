@@ -1,69 +1,72 @@
 class CovidAPI {
-  static async fetchData(resource) {
-    const BASE_URL = 'http://localhost:3000'; //apunta a express
-    // si no esta apunta a local y la pagina no se trata de comunicar con vs
-    // cuando debe comunicarse a express que es donde se manda la info desde app
+  static async getGlobalStats() {
     try {
-      const response = await fetch(`${BASE_URL}${resource}`, { // Usa BASE_URL
-        headers: { 'Accept': 'application/json' }
-      });
-
-      return response.json();
-    } catch (error) {
-      console.error(`Error fetching ${resource}:`, error);
-      throw error;
-    }
-  }
-
-  static async getCountries() {
-    try {
-      const data = await this.fetchData('/api/countries');
-      console.log('Countries data:', data); // Debug
-      if (!Array.isArray(data)) {
-        throw new Error('Formato de datos inválido');
+      const response = await fetch('/api/stats');
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
-      return data;
+      return await response.json();
     } catch (error) {
-      console.error('Error loading countries:', error);
-      throw new Error('No se pudo cargar la lista de países');
+      console.error('Error fetching global stats:', error);
+      return {
+        lastDate: null,
+        totalCases: 0,
+        totalDeaths: 0,
+        totalVaccinations: 0
+      };
     }
   }
 
-  static async getSummaryData() {
+  static async getTimeSeriesData(country, metric, period = 'allTime') {
     try {
-      const data = await this.fetchData('/api/summary');
-      console.log('Summary data:', data); // Debug
-      return data;
-    } catch (error) {
-      console.error('Error loading summary:', error);
-      throw new Error('No se pudo cargar el resumen de datos');
-    }
-  }
-
-  static async getTimeSeriesData(countryCode, startDate = null) {
-    try {
-      let url = `/api/timeseries/${encodeURIComponent(countryCode)}`;
-      if (startDate) {
-        url += `?startDate=${encodeURIComponent(startDate)}`;
+      const url = `/api/time-series?${country ? `country=${encodeURIComponent(country)}&` : ''}metric=${metric}&period=${period}`;
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
-      
-      const data = await this.fetchData(url);
-      console.log('TimeSeries data:', data); // Debug
-      return data;
+      return await response.json();
     } catch (error) {
-      console.error('Error loading time series:', error);
-      throw new Error(`No se pudieron cargar datos para ${countryCode}`);
+      console.error(`Error fetching time series for ${metric}:`, error);
+      return [];
     }
   }
 
-  static async getMapData() {
+  static async getCountriesList() {
     try {
-      const data = await this.fetchData('/api/map-data');
-      console.log('Map data:', data); // Debug
-      return data;
+      const response = await fetch('/api/countries');
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      return await response.json();
     } catch (error) {
-      console.error('Error loading map data:', error);
-      throw new Error('No se pudo cargar datos para el mapa');
+      console.error('Error fetching countries list:', error);
+      return [];
+    }
+  }
+
+  static async getGeoData(metric, period = 'allTime') {
+    try {
+      const response = await fetch(`/api/geo-data?metric=${metric}&period=${period}`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error(`Error fetching geo data for ${metric}:`, error);
+      return [];
+    }
+  }
+
+  static async getMortalityRateData(period = 'allTime') {
+    try {
+      const response = await fetch(`/api/mortality-rate?period=${period}`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Error fetching mortality rate data:', error);
+      return [];
     }
   }
 }

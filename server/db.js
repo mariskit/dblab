@@ -1,4 +1,3 @@
-// db/server/db.js
 const sql = require('mssql');
 
 const config = {
@@ -13,50 +12,21 @@ const config = {
   options: {
     database: 'covid-dashboard-db',
     encrypt: true,
-    trustServerCertificate: false,
-    connectTimeout: 30000,
-    requestTimeout: 30000,
-    pool: {
-      max: 10,
-      min: 0,
-      idleTimeoutMillis: 30000
-    }
+    trustServerCertificate: false
   }
 };
 
-// Función para probar la conexión
-async function testConnection() {
-  try {
-    console.log('Intentando conectar a la base de datos...');
-    const pool = await sql.connect(config);
-    const result = await pool.request().query('SELECT 1 AS test');
-    console.log('Conexión exitosa:', result.recordset);
-    return pool;
-  } catch (err) {
-    console.error('Error de conexión:');
-    console.error('- Código:', err.code);
-    console.error('- Mensaje:', err.message);
-    
-    if (err.originalError) {
-      console.error('- Error original:', err.originalError.message);
-      console.error('- Número de error SQL:', err.originalError.number);
-    }
-    
-    throw err; // Re-lanzar el error para manejo adicional
-  }
-}
-
-// Conexión inicial
-const poolPromise = testConnection()
-  .then(pool => {
-    console.log('Conexión establecida correctamente');
+// Crear la conexión pool
+const pool = new sql.ConnectionPool(config);
+const poolPromise = pool.connect()
+  .then(() => {
+    console.log('Conexión a SQL Server exitosa');
     return pool;
   })
   .catch(err => {
-    console.error('No se pudo conectar a la base de datos');
+    console.error('Error de conexión a la base de datos:', err);
     process.exit(1);
   });
 
-module.exports = {
-  sql, poolPromise
-};
+// Exportar directamente el poolPromise
+module.exports = poolPromise;

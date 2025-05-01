@@ -1,115 +1,94 @@
-<!-- db/public/index.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>COVID-19 Global Dashboard</title>
+  <title>COVID-19 Data Dashboard</title>
   <link rel="stylesheet" href="css/style.css">
-  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script src="https://d3js.org/topojson.v3.min.js"></script>
+  <script src="https://d3js.org/d3-scale-chromatic.v1.min.js"></script>
 </head>
 <body>
-  <div class="loading-screen">
-    <div class="spinner"></div>
-    <p>Loading COVID-19 Data...</p>
+  <div class="dashboard-container">
+    <header class="dashboard-header">
+      <h1>COVID-19 Data Dashboard</h1>
+      <p class="dashboard-description">
+        This dashboard provides interactive visualizations of COVID-19 data worldwide, 
+        including cases, deaths, and vaccination progress. Use the controls below to 
+        explore the data and gain insights into the pandemic's impact across different 
+        countries and time periods.
+      </p>
+      <div class="stats-container" id="globalStats">
+        <div class="stat-card">
+          <h3>Total Cases</h3>
+          <p id="totalCases">Loading...</p>
+        </div>
+        <div class="stat-card">
+          <h3>Total Deaths</h3>
+          <p id="totalDeaths">Loading...</p>
+        </div>
+        <div class="stat-card">
+          <h3>Total Vaccinations</h3>
+          <p id="totalVaccinations">Loading...</p>
+        </div>
+        <div class="stat-card">
+          <h3>Last Update</h3>
+          <p id="lastUpdate">Loading...</p>
+        </div>
+      </div>
+    </header>
+
+    <div class="controls-container">
+      <div class="control-group">
+        <label for="countrySelect">Select Country:</label>
+        <select id="countrySelect">
+          <option value="">All Countries</option>
+        </select>
+      </div>
+      <div class="control-group">
+        <label for="metricSelect">Select Metric:</label>
+        <select id="metricSelect">
+          <option value="NewCases">New Cases</option>
+          <option value="NewDeaths">New Deaths</option>
+          <option value="TotalVaccinations">Vaccinations</option>
+        </select>
+      </div>
+      <div class="control-group">
+        <label for="timePeriod">Periodo Temporal:</label>
+        <select id="timePeriod">
+          <option value="allTime">All Time</option>
+          <option value="lastYear">Last Year</option>
+          <option value="last6Months">Last 6 Months</option>
+        </select>
+      </div>
+      <button id="updateCharts">Update Charts</button>
+    </div>
+
+    <div class="charts-container">
+      <div class="chart-card" id="timeSeriesChart">
+        <h2>Time Series</h2>
+        <div class="chart-container"></div>
+      </div>
+      <div class="chart-card" id="geoChart">
+        <h2>Geographical Distribution</h2>
+        <div class="chart-container"></div>
+      </div>
+      <div class="chart-card" id="comparisonChart">
+        <h2>Country Comparison</h2>
+        <div class="chart-container"></div>
+      </div>
+      <div class="chart-card" id="barChart">
+        <h2>Top Countries</h2>
+        <div class="chart-container"></div>
+      </div>
+      <div class="chart-card" id="scatterPlot">
+        <h2>Cases vs Deaths</h2>
+        <div class="chart-container"></div>
+      </div>
+    </div>
   </div>
 
-  <header class="header">
-    <div class="header-content">
-      <h1>COVID-19 Global Dashboard</h1>
-      <p>Tracking the pandemic's impact across the world with up-to-date statistics and visualizations</p>
-    </div>
-  </header>
-
-  <main class="dashboard-container">
-    <section class="controls-section">
-      <div class="control-group">
-        <label for="country-select">Select Country:</label>
-        <select id="country-select" class="dropdown">
-          <option value="">Loading countries...</option>
-        </select>
-      </div>
-      
-      <div class="control-group">
-        <label for="metric-select">Primary Metric:</label>
-        <select id="metric-select" class="dropdown">
-          <option value="TotalCases">Total Cases</option>
-          <option value="NewCases">New Cases</option>
-          <option value="TotalDeaths">Total Deaths</option>
-          <option value="NewDeaths">New Deaths</option>
-          <option value="TotalVaccinations">Total Vaccinations</option>
-          <option value="CasesPerThousand">Cases per 1000</option>
-        </select>
-      </div>
-      
-      <div class="control-group">
-        <label for="date-range">Date Range:</label>
-        <select id="date-range" class="dropdown">
-          <option value="all">All Time</option>
-          <option value="1y">Last Year</option>
-          <option value="6m">Last 6 Months</option>
-          <option value="3m">Last 3 Months</option>
-        </select>
-      </div>
-      
-      <button id="update-btn" class="btn-primary">Update Dashboard</button>
-    </section>
-
-    <section class="summary-cards">
-      <div class="card confirmed">
-        <h3>Total Confirmed</h3>
-        <p id="total-cases">-</p>
-        <div class="card-footer">Worldwide</div>
-      </div>
-      
-      <div class="card deaths">
-        <h3>Total Deaths</h3>
-        <p id="total-deaths">-</p>
-        <div class="card-footer">Worldwide</div>
-      </div>
-      
-      <div class="card vaccinated">
-        <h3>Total Vaccinated</h3>
-        <p id="total-vaccinations">-</p>
-        <div class="card-footer">Worldwide</div>
-      </div>
-    </section>
-
-    <section class="charts-section">
-      <div class="chart-container">
-        <canvas id="timeSeriesChart"></canvas>
-        <div class="chart-title">COVID-19 Time Series</div>
-      </div>
-      
-      <div class="chart-container">
-        <canvas id="mapChart"></canvas>
-        <div class="chart-title">Global Cases Distribution</div>
-      </div>
-      
-      <div class="chart-container">
-        <canvas id="barChart"></canvas>
-        <div class="chart-title">Top 10 Countries by Selected Metric</div>
-      </div>
-      
-      <div class="chart-container">
-        <canvas id="pieChart"></canvas>
-        <div class="chart-title">Cases by Continent</div>
-      </div>
-      
-      <div class="chart-container">
-        <canvas id="scatterChart"></canvas>
-        <div class="chart-title">Cases vs Deaths per Country</div>
-      </div>
-    </section>
-  </main>
-
-  <footer class="footer">
-    <p>Data sourced from Our World in Data | Last updated: <span id="last-updated">-</span></p>
-  </footer>
-
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-geo@3.6.0/build/Chart.Geo.min.js"></script>
   <script src="js/api.js"></script>
   <script src="js/charts.js"></script>
   <script src="js/app.js"></script>

@@ -1,186 +1,196 @@
 const express = require('express');
+const poolPromise = require('./db'); // Importa directamente el poolPromise
+
 const router = express.Router();
-const { poolPromise, sql } = require('./db');
 
-// Middleware para manejo de errores
-const asyncHandler = (fn) => (req, res, next) => {
-  Promise.resolve(fn(req, res, next)).catch(next);
-};
+// Ruta para obtener estadísticas globales actualizada
+router.get('/api/stats', async (req, res) => {
+  try {
+    const pool = await poolPromise;
+    const result = await pool.request().query(`
+      -- Paso 1: obtener los máximos por país
+      WITH maximos_por_pais AS (
+          SELECT 
+              CountryCode,
+              MAX(TRY_CAST(TotalCases AS BIGINT)) AS max_cases,
+              MAX(TRY_CAST(TotalDeaths AS BIGINT)) AS max_deaths,
+              MAX(TRY_CAST(TotalVaccinations AS BIGINT)) AS max_vaccinations,
+              MAX(RecordDate) AS last_update
+          FROM dbo.CovidData
+          GROUP BY CountryCode
+      )
 
-// los json van a app.js
-// Obtener lista de países con datos
+      -- Paso 2: sumar los totales y obtener la fecha más reciente
+      SELECT 
+          SUM(max_cases) AS totalCases,
+          SUM(max_deaths) AS totalDeaths,
+          SUM(max_vaccinations) AS totalVaccinations,
+          MAX(last_update) AS lastDate
+      FROM maximos_por_pais
+    `);
+    
+    const stats = {
+      lastDate: result.recordset[0]?.lastDate || 'N/A',
+      totalCases: result.recordset[0]?.totalCases || 0,
+      totalDeaths: result.recordset[0]?.totalDeaths || 0,
+      totalVaccinations: result.recordset[0]?.totalVaccinations || 0
+    };
+    
+    res.json(stats);
+  } catch (err) {
+    console.error('Error en consulta SQL:', err);
+    res.status(500).json({ 
+      error: 'Error interno del servidor',
+      details: err.message
+    });
+  }
+});
+
+// Ruta para series temporales actualizada
+router.get('/api/time-series', async (req, res) => {
+  try {
+    const { country, metric, period } = req.query;
+    const validMetrics = ['TotalCases', 'NewCases', 'TotalDeaths', 'NewDeaths', 'TotalVaccinations'];
+    
+    if (!validMetrics.includes(metric)) {
+      return res.status(400).send('Invalid metric');
+    }
+
+    let dateCondition = '';
+    if (period === 'lastYear') {
+      dateCondition = 'AND RecordDate >= DATEADD(YEAR, -1, GETDATE())';
+    } else if (period === 'last6Months') {
+      dateCondition = 'AND RecordDate >= DATEADD(MONTH, -6, GETDATE())';
+    }
+
+    const pool = await poolPromise;
+    const query = `
+      SELECT 
+        c.CountryName,
+        cd.RecordDate,
+        cd.${metric} AS Value
+      FROM CovidData cd
+      JOIN Countries c ON cd.CountryCode = c.CountryCode
+      WHERE cd.${metric} IS NOT NULL
+      ${country ? 'AND c.CountryName = @country' : ''}
+      ${dateCondition}
+      ORDER BY cd.RecordDate
+    `;
+
+    const request = pool.request();
+    if (country) request.input('country', sql.NVarChar, country);
+
+    const result = await request.query(query);
+    
+    const formattedData = result.recordset.map(item => ({
+      CountryName: item.CountryName,
+      RecordDate: item.RecordDate,
+      [metric]: item.Value
+    }));
+    
+    res.json(formattedData);
+  } catch (err) {
+    res.status(500).send(err.message);
+  }
+});
+
+// Ruta para datos geográficos actualizada
+router.get('/api/geo-data', async (req, res) => {
+  try {
+    const { metric, period } = req.query;
+    const validMetrics = ['TotalCases', 'TotalDeaths', 'TotalVaccinations'];
+    
+    if (!validMetrics.includes(metric)) {
+      return res.status(400).send('Invalid metric');
+    }
+
+    let dateCondition = '';
+    if (period === 'lastYear') {
+      dateCondition = 'AND RecordDate >= DATEADD(YEAR, -1, GETDATE())';
+    } else if (period === 'last6Months') {
+      dateCondition = 'AND RecordDate >= DATEADD(MONTH, -6, GETDATE())';
+    }
+
+    const pool = await poolPromise;
+    const result = await pool.request().query(`
+      WITH UltimosDatos AS (
+        SELECT 
+            CountryCode,
+            MAX(RecordDate) AS UltimaFecha
+        FROM CovidData
+        WHERE ${metric} IS NOT NULL
+        ${dateCondition}
+        GROUP BY CountryCode
+      )
+      SELECT 
+        c.CountryName,
+        cd.${metric} AS value
+      FROM CovidData cd
+      JOIN UltimosDatos ud ON cd.CountryCode = ud.CountryCode AND cd.RecordDate = ud.UltimaFecha
+      JOIN Countries c ON cd.CountryCode = c.CountryCode
+      ORDER BY cd.${metric} DESC
+    `);
+    res.json(result.recordset);
+  } catch (err) {
+    res.status(500).send(err.message);
+  }
+});
+
+// Ruta para lista de países actualizada
 router.get('/api/countries', async (req, res) => {
   try {
     const pool = await poolPromise;
     const result = await pool.request().query(`
-      SELECT DISTINCT c.CountryCode, c.CountryName 
-      FROM Countries c
-      JOIN CovidData cd ON c.CountryCode = cd.CountryCode
-      WHERE cd.TotalCases > 0
-      ORDER BY c.CountryName
+      SELECT CountryName 
+      FROM Countries
+      ORDER BY CountryName
     `);
-    
-    if (!result.recordset.length) {
-      return res.status(404).json({ message: 'No se encontraron países' });
-    }
-    
-    res.json(result.recordset);
+    res.json(result.recordset.map(item => item.CountryName));
   } catch (err) {
-    console.error('Error en /api/countries:', err);
-    res.status(500).json({ error: 'Error interno del servidor' });
+    res.status(500).send(err.message);
   }
 });
 
-// Obtener datos resumidos
-router.get('/api/summary', asyncHandler(async (req, res) => {
+// Ruta para tasa de mortalidad actualizada
+router.get('/api/mortality-rate', async (req, res) => {
   try {
+    const { period } = req.query;
+    
+    let dateCondition = '';
+    if (period === 'lastYear') {
+      dateCondition = 'AND RecordDate >= DATEADD(YEAR, -1, GETDATE())';
+    } else if (period === 'last6Months') {
+      dateCondition = 'AND RecordDate >= DATEADD(MONTH, -6, GETDATE())';
+    }
+
     const pool = await poolPromise;
     const result = await pool.request().query(`
-      WITH LatestData AS (
+      WITH UltimosDatos AS (
         SELECT 
-          CountryCode,
-          TotalCases,
-          TotalDeaths,
-          TotalVaccinations,
-          ROW_NUMBER() OVER (PARTITION BY CountryCode ORDER BY RecordDate DESC) AS rn
+            CountryCode,
+            MAX(RecordDate) AS UltimaFecha
         FROM CovidData
-        WHERE TotalCases > 0
+        WHERE TotalCases > 0 AND TotalDeaths > 0
+        ${dateCondition}
+        GROUP BY CountryCode
       )
       SELECT 
-        SUM(CAST(TotalCases AS BIGINT)) AS globalCases,
-        SUM(CAST(TotalDeaths AS BIGINT)) AS globalDeaths,
-        SUM(CAST(TotalVaccinations AS BIGINT)) AS globalVaccinations,
-        MAX((SELECT MAX(RecordDate) FROM CovidData)) AS lastUpdated
-      FROM LatestData
-      WHERE rn = 1
-    `);
-
-    if (!result.recordset[0]) {
-      return res.status(404).json({ error: "No se encontraron datos globales" });
-    }
-
-    const { globalCases, globalDeaths, globalVaccinations, lastUpdated } = result.recordset[0];
-
-    res.json({
-      totals: {
-        cases: globalCases || 0,
-        deaths: globalDeaths || 0,
-        vaccinations: globalVaccinations || 0
-      },
-      lastUpdated
-    });
-
-  } catch (error) {
-    console.error('Error en /api/summary:', error);
-    res.status(500).json({ 
-      error: "Error al calcular totales globales",
-      details: process.env.NODE_ENV === 'development' ? error.message : null
-    });
-  }
-}));
-
-// Obtener series temporales por país
-router.get('/api/timeseries/:countryCode', asyncHandler(async (req, res) => {
-  const { countryCode } = req.params;
-  const { startDate, endDate } = req.query;
-  
-  const pool = await poolPromise;
-  const request = pool.request()
-    .input('countryCode', sql.VarChar(3), countryCode.toUpperCase());
-
-  let query = `
-    SELECT 
-      CONVERT(VARCHAR(10), RecordDate, 120) AS date,
-      TotalCases,
-      NewCases,
-      TotalDeaths,
-      NewDeaths,
-      TotalVaccinations,
-      CAST(ROUND(TotalCases*1000.0/NULLIF(Population,0), 2) AS cases_per_thousand
-    FROM CovidData cd
-    JOIN Countries c ON cd.CountryCode = c.CountryCode
-    WHERE cd.CountryCode = @countryCode
-      AND cd.TotalCases > 0
-  `;
-
-  // Filtros opcionales de fecha
-  if (startDate) {
-    query += ` AND RecordDate >= @startDate`;
-    request.input('startDate', sql.Date, startDate);
-  }
-  
-  if (endDate) {
-    query += ` AND RecordDate <= @endDate`;
-    request.input('endDate', sql.Date, endDate);
-  }
-
-  query += ` ORDER BY RecordDate`;
-
-  try {
-    const result = await request.query(query);
-    
-    if (!result.recordset.length) {
-      return res.status(404).json({ 
-        error: 'No se encontraron datos',
-        details: `País: ${countryCode}` 
-      });
-    }
-
-    res.json(result.recordset);
-  } catch (err) {
-    console.error('Error en timeseries:', {
-      query: query,
-      params: { countryCode, startDate, endDate },
-      error: err
-    });
-    
-    res.status(500).json({ 
-      error: 'Error al obtener series temporales',
-      details: process.env.NODE_ENV === 'development' ? err.message : null
-    });
-  }
-}));
-
-// Obtener datos para mapa
-router.get('/api/map-data', asyncHandler(async (req, res) => {
-  const pool = await poolPromise;
-  const result = await pool.request().query(`
-    WITH LatestData AS (
-      SELECT 
-        c.CountryCode,
         c.CountryName,
         cd.TotalCases,
         cd.TotalDeaths,
-        cd.TotalVaccinations,
-        c.Population,
-        ROW_NUMBER() OVER (PARTITION BY c.CountryCode ORDER BY cd.RecordDate DESC) AS rn
-      FROM Countries c
-      JOIN CovidData cd ON c.CountryCode = cd.CountryCode
-      WHERE cd.TotalCases > 0
-    )
-    SELECT 
-      CountryName,
-      CountryCode,
-      TotalCases,
-      TotalDeaths,
-      TotalVaccinations,
-      Population,
-      (TotalCases*1000.0/Population) AS CasesPerThousand,
-      (TotalDeaths*1000.0/Population) AS DeathsPerThousand
-    FROM LatestData
-    WHERE rn = 1
-  `);
-  
-  res.json(result.recordset);
-}));
-
-// Manejo centralizado de errores
-router.use((err, req, res, next) => {
-  console.error('Error en API:', err);
-  res.status(500).json({ 
-    error: 'Error interno del servidor',
-    details: process.env.NODE_ENV === 'development' ? err.message : null
-  });
+        CASE 
+          WHEN cd.TotalCases > 0 THEN (cd.TotalDeaths * 100.0 / cd.TotalCases)
+          ELSE 0 
+        END AS MortalityRate
+      FROM CovidData cd
+      JOIN UltimosDatos ud ON cd.CountryCode = ud.CountryCode AND cd.RecordDate = ud.UltimaFecha
+      JOIN Countries c ON cd.CountryCode = c.CountryCode
+      WHERE cd.TotalCases > 10000
+      ORDER BY MortalityRate DESC
+    `);
+    res.json(result.recordset);
+  } catch (err) {
+    res.status(500).send(err.message);
+  }
 });
-
-module.exports = router;
+module.exports = router

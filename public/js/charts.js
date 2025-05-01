@@ -1,520 +1,469 @@
-class ChartManager {
-  constructor() {
-    
-    this.chartInstances = {};
-    this.colorPalette = {
-      cases: {
-        base: 'rgba(243, 156, 18, 1)',
-        light: 'rgba(243, 156, 18, 0.2)'
-      },
-      deaths: {
-        base: 'rgba(231, 76, 60, 1)',
-        light: 'rgba(231, 76, 60, 0.2)'
-      },
-      vaccinations: {
-        base: 'rgba(46, 204, 113, 1)',
-        light: 'rgba(46, 204, 113, 0.2)'
-      },
-      default: {
-        base: 'rgba(52, 152, 219, 1)',
-        light: 'rgba(52, 152, 219, 0.2)'
-      }
-    };
-  }
+class Charts {
+  static margin = { top: 20, right: 30, bottom: 40, left: 50 };
   
-
-  // Destruye TODOS los gráficos existentes
-  destroyAllCharts() {
-    Object.keys(this.chartInstances).forEach(chartId => {
-      if (this.chartInstances[chartId]) {
-        this.chartInstances[chartId].destroy();
-      }
-    });
-    this.chartInstances = {}; // Resetear el objeto
-  }
-
-  // Método genérico para inicializar cualquier gráfico
-  initChart({ id, type, ctx, data, labels, backgroundColor, options = {} }) {
-    this._destroyChartIfExists(id);
+  static createTimeSeriesChart(containerId, data, metric) {
+    const container = document.querySelector(`#${containerId} .chart-container`);
+    container.innerHTML = '';
     
-    this.chartInstances[id] = new Chart(ctx, {
-      type,
-      data: {
-        labels,
-        datasets: [{ data, backgroundColor }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        ...options
-      }
-    });
-  }
-
-  // Métodos auxiliares
-  _destroyChartIfExists(chartId) {
-    if (this.chartInstances[chartId]) {
-      this.chartInstances[chartId].destroy();
-      delete this.chartInstances[chartId];
-    }
-  }
-
-  _showErrorMessage(ctx, message = 'No hay datos disponibles') {
-    ctx.save();
-    ctx.font = '16px "Roboto", sans-serif';
-    ctx.fillStyle = '#95a5a6';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(message, ctx.canvas.width / 2, ctx.canvas.height / 2);
-    ctx.restore();
-  }
-
-  _getColorForMetric(metric) {
-    const colorMap = {
-      'TotalCases': this.colorPalette.cases,
-      'NewCases': this.colorPalette.cases,
-      'TotalDeaths': this.colorPalette.deaths,
-      'NewDeaths': this.colorPalette.deaths,
-      'TotalVaccinations': this.colorPalette.vaccinations,
-      'CasesPerThousand': this.colorPalette.cases
-    };
-    return colorMap[metric] || this.colorPalette.default;
-  }
-
-  _getLabelForMetric(metric) {
-    const labels = {
-      'TotalCases': 'Casos Totales',
-      'NewCases': 'Nuevos Casos',
-      'TotalDeaths': 'Muertes Totales',
-      'NewDeaths': 'Nuevas Muertes',
-      'TotalVaccinations': 'Vacunaciones Totales',
-      'CasesPerThousand': 'Casos por 1000 hab.'
-    };
-    return labels[metric] || metric;
-  }
-
-  _formatTooltipValue(value) {
-    return Number(value).toLocaleString();
-  }
-
-  // Métodos principales de gráficos
-initTimeSeriesChart(ctx, data, metric = 'TotalCases') {
-  this._destroyChartIfExists('timeSeriesChart');
-
-  // Validación robusta de datos
-  if (!ctx || !ctx.canvas) {
-    console.error('Contexto de canvas no válido');
-    return;
-  }
-
-  if (!data || !Array.isArray(data)) {
-    this._showErrorMessage(ctx, 'Datos no válidos');
-    console.error('Datos recibidos:', data);
-    return;
-  }
-
-  if (data.error) {
-    this._showErrorMessage(ctx, data.error);
-    return;
-  }
-
-  if (data.length === 0) {
-    this._showErrorMessage(ctx, 'No hay datos disponibles');
-    return;
-  }
-
-  try {
-    const colors = this._getColorForMetric(metric);
-    const chartData = {
-      labels: data.map(item => item.date),
-      datasets: [{
-        label: this._getLabelForMetric(metric),
-        data: data.map(item => item[metric] || 0),
-        borderColor: colors.base,
-        backgroundColor: colors.light,
-        borderWidth: 2,
-        fill: true,
-        tension: 0.1
-      }]
-    };
-
-    this.chartInstances.timeSeriesChart = new Chart(ctx, {
-      type: 'line',
-      data: chartData,
-      options: {
-        responsive: true,
-        plugins: {
-          tooltip: {
-            callbacks: {
-              label: (context) => {
-                const item = data[context.dataIndex];
-                return [
-                  `${context.dataset.label}: ${item[metric].toLocaleString()}`,
-                  `Fecha: ${item.date}`,
-                  `Total muertes: ${item.TotalDeaths?.toLocaleString() || 'N/A'}`,
-                  `Vacunaciones: ${item.TotalVaccinations?.toLocaleString() || 'N/A'}`
-                ];
-              }
-            }
-          }
-        },
-        scales: {
-          x: {
-            grid: { display: false },
-            ticks: { maxRotation: 45 }
-          },
-          y: {
-            beginAtZero: false,
-            ticks: { callback: value => value.toLocaleString() }
-          }
-        }
-      }
-    });
-
-  } catch (error) {
-    console.error('Error al crear gráfico:', error);
-    this._showErrorMessage(ctx, 'Error al procesar datos');
-  }
-}
-
-  initBarChart(ctx, data, metric = 'TotalCases') {
-    this._destroyChartIfExists('barChart');
-
     if (!data || data.length === 0) {
-      this._showErrorMessage(ctx);
+      container.innerHTML = '<p class="no-data">No data available</p>';
       return;
     }
 
-    try {
-      const colors = this._getColorForMetric(metric);
-      const sortedData = [...data]
-        .sort((a, b) => (b[metric] || 0) - (a[metric] || 0))
-        .slice(0, 10);
+    const width = container.clientWidth;
+    const height = container.clientHeight;
+    const innerWidth = width - this.margin.left - this.margin.right;
+    const innerHeight = height - this.margin.top - this.margin.bottom;
 
-      this.chartInstances.barChart = new Chart(ctx, {
-        type: 'bar',
-        data: {
-          labels: sortedData.map(item => item.CountryName),
-          datasets: [{
-            label: this._getLabelForMetric(metric),
-            data: sortedData.map(item => item[metric]),
-            backgroundColor: colors.base,
-            borderColor: colors.base,
-            borderWidth: 1
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: {
-              display: false
-            },
-            tooltip: {
-              callbacks: {
-                label: (context) => {
-                  return `${context.dataset.label}: ${this._formatTooltipValue(context.raw)}`;
-                }
-              }
-            }
-          },
-          scales: {
-            x: {
-              grid: {
-                display: false
-              },
-              ticks: {
-                font: {
-                  size: 12
-                }
-              }
-            },
-            y: {
-              beginAtZero: true,
-              ticks: {
-                callback: (value) => this._formatTooltipValue(value),
-                font: {
-                  size: 12
-                }
-              }
-            }
-          }
-        }
-      });
-    } catch (error) {
-      console.error('Error creating bar chart:', error);
-      this._showErrorMessage(ctx, 'Error al crear gráfico');
-    }
-  }
+    const svg = d3.select(container)
+      .append('svg')
+      .attr('width', width)
+      .attr('height', height);
 
-  initPieChart(ctx, data) {
-    this._destroyChartIfExists('pieChart');
+    const g = svg.append('g')
+      .attr('transform', `translate(${this.margin.left},${this.margin.top})`);
 
-    if (!data || data.length === 0) {
-      this._showErrorMessage(ctx);
-      return;
-    }
-
-    try {
-      // Agrupar datos por continente
-      const continentData = data.reduce((acc, item) => {
-        if (!item.Continent) return acc;
-        acc[item.Continent] = (acc[item.Continent] || 0) + (item.TotalCases || 0);
-        return acc;
-      }, {});
-
-      const continents = Object.keys(continentData).filter(cont => continentData[cont] > 0);
-
-      if (continents.length === 0) {
-        this._showErrorMessage(ctx);
-        return;
-      }
-
-      this.chartInstances.pieChart = new Chart(ctx, {
-        type: 'pie',
-        data: {
-          labels: continents,
-          datasets: [{
-            data: continents.map(cont => continentData[cont]),
-            backgroundColor: [
-              'rgba(52, 152, 219, 0.7)',
-              'rgba(155, 89, 182, 0.7)',
-              'rgba(26, 188, 156, 0.7)',
-              'rgba(241, 196, 15, 0.7)',
-              'rgba(230, 126, 34, 0.7)',
-              'rgba(231, 76, 60, 0.7)'
-            ],
-            borderWidth: 1
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: {
-              position: 'right',
-              labels: {
-                font: {
-                  size: 12
-                }
-              }
-            },
-            tooltip: {
-              callbacks: {
-                label: (context) => {
-                  const total = context.dataset.data.reduce((a, b) => a + b, 0);
-                  const value = context.raw;
-                  const percentage = Math.round((value / total) * 100);
-                  return `${context.label}: ${this._formatTooltipValue(value)} (${percentage}%)`;
-                }
-              }
-            }
-          },
-          animation: {
-            animateScale: true,
-            animateRotate: true
-          }
-        }
-      });
-    } catch (error) {
-      console.error('Error creating pie chart:', error);
-      this._showErrorMessage(ctx, 'Error al crear gráfico');
-    }
-  }
-
-  initScatterChart(ctx, data) {
-    this._destroyChartIfExists('scatterChart');
-
-    if (!data || data.length === 0) {
-      this._showErrorMessage(ctx);
-      return;
-    }
-
-    try {
-      // Filtrar datos con valores válidos
-      const validData = data.filter(
-        item => item.TotalCases > 0 && item.TotalDeaths > 0 && item.Population
-      );
-
-      if (validData.length === 0) {
-        this._showErrorMessage(ctx, 'No hay datos suficientes');
-        return;
-      }
-
-      this.chartInstances.scatterChart = new Chart(ctx, {
-        type: 'bubble',
-        data: {
-          datasets: [{
-            label: 'Casos vs Muertes',
-            data: validData.map(item => ({
-              x: item.TotalCases,
-              y: item.TotalDeaths,
-              r: Math.sqrt(item.Population) / 1000
-            })),
-            backgroundColor: 'rgba(52, 152, 219, 0.7)'
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            tooltip: {
-              callbacks: {
-                label: (context) => {
-                  const item = validData[context.dataIndex];
-                  return [
-                    `País: ${item.CountryName}`,
-                    `Población: ${this._formatTooltipValue(item.Population)}`,
-                    `Casos: ${this._formatTooltipValue(item.TotalCases)}`,
-                    `Muertes: ${this._formatTooltipValue(item.TotalDeaths)}`,
-                    `Mortalidad: ${(item.TotalDeaths / item.TotalCases * 100).toFixed(2)}%`
-                  ];
-                }
-              }
-            }
-          },
-          scales: {
-            x: {
-              type: 'logarithmic',
-              title: {
-                display: true,
-                text: 'Casos totales (log)',
-                font: {
-                  weight: 'bold',
-                  size: 14
-                }
-              },
-              ticks: {
-                callback: (value) => this._formatTooltipValue(value)
-              }
-            },
-            y: {
-              type: 'logarithmic',
-              title: {
-                display: true,
-                text: 'Muertes totales (log)',
-                font: {
-                  weight: 'bold',
-                  size: 14
-                }
-              },
-              ticks: {
-                callback: (value) => this._formatTooltipValue(value)
-              }
-            }
-          }
-        }
-      });
-    } catch (error) {
-      console.error('Error creating scatter chart:', error);
-      this._showErrorMessage(ctx, 'Error al crear gráfico');
-    }
-  }
-
-  initMapChart(ctx, data) {
-    this._destroyChartIfExists('mapChart');
-
-    if (!data || data.length === 0) {
-      this._showErrorMessage(ctx, 'No hay datos geográficos');
-      return;
-    }
-
-    try {
-      // Verificar si el plugin ChartGeo está disponible
-      if (typeof ChartGeo === 'undefined') {
-        throw new Error('ChartGeo plugin no está cargado');
-      }
-
-      // Configurar datos para el mapa
-      const mapData = {
-        labels: data.map(item => item.CountryCode),
-        datasets: [{
-          label: 'Casos por país',
-          data: data.map(item => ({
-            feature: item.CountryCode,
-            value: item.TotalCases
-          })),
-          backgroundColor: context => {
-            const value = context.dataset.data[context.dataIndex].value;
-            const max = Math.max(...data.map(item => item.TotalCases));
-            const ratio = value / max;
-            return `rgba(231, 76, 60, ${0.2 + ratio * 0.8})`;
-          }
-        }]
-      };
-
-      this.chartInstances.mapChart = new Chart(ctx, {
-        type: 'choropleth',
-        data: mapData,
-        options: {
-          showOutline: true,
-          showGraticule: true,
-          plugins: {
-            legend: {
-              display: true,
-              position: 'bottom'
-            },
-            tooltip: {
-              callbacks: {
-                label: (context) => {
-                  const country = data.find(item => item.CountryCode === context.label);
-                  if (!country) return context.label;
-                  
-                  return [
-                    `País: ${country.CountryName}`,
-                    `Población: ${this._formatTooltipValue(country.Population)}`,
-                    `Casos: ${this._formatTooltipValue(country.TotalCases)}`,
-                    `Muertes: ${this._formatTooltipValue(country.TotalDeaths)}`,
-                    `Vacunas: ${country.TotalVaccinations ? this._formatTooltipValue(country.TotalVaccinations) : 'N/A'}`
-                  ];
-                }
-              }
-            }
-          },
-          scales: {
-            xy: {
-              projection: 'equalEarth'
-            }
-          }
-        }
-      });
-    } catch (error) {
-      console.error('Error creating map chart:', error);
-      this._showErrorMessage(ctx, 'Error al crear mapa. Cargue el plugin ChartGeo');
-    }
-  }
-
-  // Método para actualizar todos los gráficos
-  updateAllCharts(chartContexts, summaryData, mapData, selectedMetric) {
-    if (chartContexts.timeSeries && this.chartInstances.timeSeriesChart) {
-      this.initTimeSeriesChart(
-        chartContexts.timeSeries, 
-        summaryData, 
-        selectedMetric
-      );
-    }
-    
-    if (chartContexts.bar) {
-      this.initBarChart(chartContexts.bar, summaryData, selectedMetric);
-    }
-    
-    if (chartContexts.pie) {
-      this.initPieChart(chartContexts.pie, summaryData);
-    }
-    
-    if (chartContexts.scatter) {
-      this.initScatterChart(chartContexts.scatter, summaryData);
-    }
-    
-    if (chartContexts.map) {
-      this.initMapChart(chartContexts.map, mapData);
-    }
-  }
-
-  // Método para limpiar todos los gráficos
-  destroyAllCharts() {
-    Object.keys(this.chartInstances).forEach(chartId => {
-      this._destroyChartIfExists(chartId);
+    // Parse dates
+    const parseDate = d3.timeParse('%Y-%m-%d');
+    const cleanMetric = metric.replace('_', '');
+    data.forEach(d => {
+      d.RecordDate = parseDate(d.RecordDate);
+      d[cleanMetric] = +d[metric]; // Usamos el nombre original de la métrica
     });
+
+    // Set scales
+    const x = d3.scaleTime()
+      .domain(d3.extent(data, d => d.RecordDate))
+      .range([0, innerWidth]);
+
+    const y = d3.scaleLinear()
+      .domain([0, d3.max(data, d => d[cleanMetric])])
+      .nice()
+      .range([innerHeight, 0]);
+
+    // Create line generator
+    const line = d3.line()
+      .x(d => x(d.RecordDate))
+      .y(d => y(d[cleanMetric]))
+      .curve(d3.curveMonotoneX);
+
+    // Add axes
+    g.append('g')
+      .attr('class', 'axis axis--x')
+      .attr('transform', `translate(0,${innerHeight})`)
+      .call(d3.axisBottom(x).ticks(5).tickFormat(d3.timeFormat('%b %Y')));
+
+    g.append('g')
+      .attr('class', 'axis axis--y')
+      .call(d3.axisLeft(y))
+      .append('text')
+      .attr('fill', '#000')
+      .attr('transform', 'rotate(-90)')
+      .attr('y', -40)
+      .attr('x', -innerHeight / 2)
+      .attr('text-anchor', 'middle')
+      .text(cleanMetric.replace(/([A-Z])/g, ' $1')); // Formatea NewCases como "New Cases"
+
+    // Add line path
+    g.append('path')
+      .datum(data)
+      .attr('class', 'line')
+      .attr('d', line)
+      .attr('stroke', 'steelblue')
+      .attr('stroke-width', 2)
+      .attr('fill', 'none');
+
+    // Add tooltip
+    const tooltip = d3.select(container)
+      .append('div')
+      .attr('class', 'tooltip')
+      .style('opacity', 0);
+
+    // Add dots with tooltip
+    g.selectAll('.dot')
+      .data(data)
+      .enter().append('circle')
+      .attr('class', 'dot')
+      .attr('cx', d => x(d.RecordDate))
+      .attr('cy', d => y(d[cleanMetric]))
+      .attr('r', 3)
+      .attr('fill', 'steelblue')
+      .on('mouseover', function(event, d) {
+        tooltip.transition()
+          .duration(200)
+          .style('opacity', .9);
+        tooltip.html(`<strong>${d3.timeFormat('%b %d, %Y')(d.RecordDate)}</strong><br/>${cleanMetric.replace(/([A-Z])/g, ' $1')}: ${d[cleanMetric]}`)
+          .style('left', (event.pageX + 5) + 'px')
+          .style('top', (event.pageY - 28) + 'px');
+      })
+      .on('mouseout', function() {
+        tooltip.transition()
+          .duration(500)
+          .style('opacity', 0);
+      });
+  }
+
+  static createGeoChart(containerId, data, metric) {
+    const container = document.querySelector(`#${containerId} .chart-container`);
+    container.innerHTML = '';
+    
+    if (!data || data.length === 0) {
+      container.innerHTML = '<p class="no-data">No data available</p>';
+      return;
+    }
+
+    const width = container.clientWidth;
+    const height = container.clientHeight;
+
+    const svg = d3.select(container)
+      .append('svg')
+      .attr('width', width)
+      .attr('height', height);
+
+    const projection = d3.geoNaturalEarth1()
+      .fitSize([width, height], { type: 'Sphere' });
+
+    const path = d3.geoPath().projection(projection);
+
+    // Create a color scale
+    const color = d3.scaleThreshold()
+      .domain([1000, 10000, 100000, 500000, 1000000, 5000000, 10000000, 50000000])
+      .range(d3.schemeBlues[8]);
+
+    // Load world map data
+    d3.json('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json').then(world => {
+      const countries = topojson.feature(world, world.objects.countries).features;
+
+      // Create a map from our data for quick lookup
+      const dataMap = {};
+      data.forEach(d => {
+        dataMap[d.CountryName] = +d.value;
+      });
+
+      // Draw the countries
+      svg.selectAll('path')
+        .data(countries)
+        .enter().append('path')
+        .attr('d', path)
+        .attr('fill', d => {
+          const value = dataMap[d.properties.name];
+          return value ? color(value) : '#ccc';
+        })
+        .attr('stroke', '#fff')
+        .attr('stroke-width', 0.5)
+        .append('title')
+        .text(d => {
+          const value = dataMap[d.properties.name];
+          return `${d.properties.name}: ${value ? value.toLocaleString() : 'No data'}`;
+        });
+
+      // Add legend
+      const legend = svg.append('g')
+        .attr('transform', `translate(${width - 100}, ${height - 120})`);
+
+      legend.selectAll('rect')
+        .data(color.range().map(d => {
+          const range = color.invertExtent(d);
+          return {
+            color: d,
+            label: range[0] ? `${range[0].toLocaleString()}` : 'No data'
+          };
+        }))
+        .enter().append('rect')
+        .attr('width', 10)
+        .attr('height', 10)
+        .attr('x', 0)
+        .attr('y', (d, i) => i * 15)
+        .attr('fill', d => d.color);
+
+      legend.selectAll('text')
+        .data(color.range().map(d => {
+          const range = color.invertExtent(d);
+          return {
+            color: d,
+            label: range[0] ? `${range[0].toLocaleString()}` : 'No data'
+          };
+        }))
+        .enter().append('text')
+        .attr('x', 15)
+        .attr('y', (d, i) => i * 15 + 9)
+        .text(d => d.label)
+        .style('font-size', '10px');
+    });
+  }
+
+  static createMortalityRateChart(containerId, data) {
+    const container = document.querySelector(`#${containerId} .chart-container`);
+    container.innerHTML = '';
+    
+    if (!data || data.length === 0) {
+      container.innerHTML = '<p class="no-data">No data available</p>';
+      return;
+    }
+
+    const width = container.clientWidth;
+    const height = container.clientHeight;
+    const innerWidth = width - this.margin.left - this.margin.right;
+    const innerHeight = height - this.margin.top - this.margin.bottom;
+
+    const svg = d3.select(container)
+      .append('svg')
+      .attr('width', width)
+      .attr('height', height);
+
+    const g = svg.append('g')
+      .attr('transform', `translate(${this.margin.left},${this.margin.top})`);
+
+    // Filtrar y ordenar datos
+    const filteredData = data.filter(d => d.MortalityRate > 0)
+      .sort((a, b) => b.MortalityRate - a.MortalityRate)
+      .slice(0, 15); // Top 15 países
+
+    // Set scales
+    const x = d3.scaleBand()
+      .domain(filteredData.map(d => d.CountryName))
+      .range([0, innerWidth])
+      .padding(0.1);
+
+    const y = d3.scaleLinear()
+      .domain([0, d3.max(filteredData, d => d.MortalityRate)])
+      .nice()
+      .range([innerHeight, 0]);
+
+    // Add axes
+    g.append('g')
+      .attr('class', 'axis axis--x')
+      .attr('transform', `translate(0,${innerHeight})`)
+      .call(d3.axisBottom(x))
+      .selectAll('text')
+      .attr('transform', 'rotate(-45)')
+      .style('text-anchor', 'end')
+      .attr('dx', '-.8em')
+      .attr('dy', '.15em');
+
+    g.append('g')
+      .attr('class', 'axis axis--y')
+      .call(d3.axisLeft(y))
+      .append('text')
+      .attr('fill', '#000')
+      .attr('transform', 'rotate(-90)')
+      .attr('y', -40)
+      .attr('x', -innerHeight / 2)
+      .attr('text-anchor', 'middle')
+      .text('Mortality Rate (%)');
+
+    // Add bars
+    g.selectAll('.bar')
+      .data(filteredData)
+      .enter().append('rect')
+      .attr('class', 'bar')
+      .attr('x', d => x(d.CountryName))
+      .attr('y', d => y(d.MortalityRate))
+      .attr('width', x.bandwidth())
+      .attr('height', d => innerHeight - y(d.MortalityRate))
+      .attr('fill', d => d.MortalityRate > 5 ? '#e74c3c' : '#3498db') // Rojo para tasas altas
+      .on('mouseover', function(event, d) {
+        d3.select(this).attr('fill', 'orange');
+        
+        const tooltip = d3.select(container)
+          .append('div')
+          .attr('class', 'tooltip')
+          .style('opacity', 0)
+          .html(`<strong>${d.CountryName}</strong><br/>
+                 Mortality Rate: ${d.MortalityRate.toFixed(2)}%<br/>
+                 Total Cases: ${d.TotalCases.toLocaleString()}<br/>
+                 Total Deaths: ${d.TotalDeaths.toLocaleString()}`)
+          .style('left', (event.pageX + 5) + 'px')
+          .style('top', (event.pageY - 28) + 'px');
+
+        tooltip.transition()
+          .duration(200)
+          .style('opacity', .9);
+      })
+      .on('mouseout', function() {
+        d3.select(this).attr('fill', d => d.MortalityRate > 5 ? '#e74c3c' : '#3498db');
+        d3.select(container).select('.tooltip').remove();
+      });
+  }
+
+  static createBarChart(containerId, data, metric) {
+    const container = document.querySelector(`#${containerId} .chart-container`);
+    container.innerHTML = '';
+    
+    if (!data || data.length === 0) {
+      container.innerHTML = '<p class="no-data">No data available</p>';
+      return;
+    }
+
+    const width = container.clientWidth;
+    const height = container.clientHeight;
+    const innerWidth = width - this.margin.left - this.margin.right;
+    const innerHeight = height - this.margin.top - this.margin.bottom;
+
+    const svg = d3.select(container)
+      .append('svg')
+      .attr('width', width)
+      .attr('height', height);
+
+    const g = svg.append('g')
+      .attr('transform', `translate(${this.margin.left},${this.margin.top})`);
+
+    // Sort data and take top 10
+    const sortedData = [...data].sort((a, b) => b.value - a.value).slice(0, 10);
+
+    // Set scales
+    const x = d3.scaleBand()
+      .domain(sortedData.map(d => d.CountryName))
+      .range([0, innerWidth])
+      .padding(0.1);
+
+    const y = d3.scaleLinear()
+      .domain([0, d3.max(sortedData, d => d.value)])
+      .nice()
+      .range([innerHeight, 0]);
+
+    // Add axes
+    g.append('g')
+      .attr('class', 'axis axis--x')
+      .attr('transform', `translate(0,${innerHeight})`)
+      .call(d3.axisBottom(x))
+      .selectAll('text')
+      .attr('transform', 'rotate(-45)')
+      .style('text-anchor', 'end')
+      .attr('dx', '-.8em')
+      .attr('dy', '.15em');
+
+    g.append('g')
+      .attr('class', 'axis axis--y')
+      .call(d3.axisLeft(y))
+      .append('text')
+      .attr('fill', '#000')
+      .attr('transform', 'rotate(-90)')
+      .attr('y', -40)
+      .attr('x', -innerHeight / 2)
+      .attr('text-anchor', 'middle')
+      .text(metric.replace(/([A-Z])/g, ' $1')); // Formatea TotalCases como "Total Cases"
+
+    // Add bars
+    g.selectAll('.bar')
+      .data(sortedData)
+      .enter().append('rect')
+      .attr('class', 'bar')
+      .attr('x', d => x(d.CountryName))
+      .attr('y', d => y(d.value))
+      .attr('width', x.bandwidth())
+      .attr('height', d => innerHeight - y(d.value))
+      .attr('fill', 'steelblue')
+      .on('mouseover', function(event, d) {
+        d3.select(this).attr('fill', 'orange');
+        
+        const tooltip = d3.select(container)
+          .append('div')
+          .attr('class', 'tooltip')
+          .style('opacity', 0)
+          .html(`<strong>${d.CountryName}</strong><br/>${metric.replace(/([A-Z])/g, ' $1')}: ${d.value.toLocaleString()}`)
+          .style('left', (event.pageX + 5) + 'px')
+          .style('top', (event.pageY - 28) + 'px');
+
+        tooltip.transition()
+          .duration(200)
+          .style('opacity', .9);
+      })
+      .on('mouseout', function() {
+        d3.select(this).attr('fill', 'steelblue');
+        d3.select(container).select('.tooltip').remove();
+      });
+  }
+
+  static createScatterPlot(containerId, data) {
+    const container = document.querySelector(`#${containerId} .chart-container`);
+    container.innerHTML = '';
+    
+    if (!data || data.length === 0) {
+      container.innerHTML = '<p class="no-data">No data available</p>';
+      return;
+    }
+
+    const width = container.clientWidth;
+    const height = container.clientHeight;
+    const innerWidth = width - this.margin.left - this.margin.right;
+    const innerHeight = height - this.margin.top - this.margin.bottom;
+
+    const svg = d3.select(container)
+      .append('svg')
+      .attr('width', width)
+      .attr('height', height);
+
+    const g = svg.append('g')
+      .attr('transform', `translate(${this.margin.left},${this.margin.top})`);
+
+    // Filter data with valid values
+    const plotData = data.filter(d => d.value > 0 && d.TotalDeaths > 0);
+
+    // Set scales (logarithmic)
+    const x = d3.scaleLog()
+      .domain(d3.extent(plotData, d => d.value))
+      .nice()
+      .range([0, innerWidth]);
+
+    const y = d3.scaleLog()
+      .domain(d3.extent(plotData, d => d.TotalDeaths))
+      .nice()
+      .range([innerHeight, 0]);
+
+    // Add axes
+    g.append('g')
+      .attr('class', 'axis axis--x')
+      .attr('transform', `translate(0,${innerHeight})`)
+      .call(d3.axisBottom(x).tickFormat(d3.format('.1s')))
+      .append('text')
+      .attr('fill', '#000')
+      .attr('x', innerWidth / 2)
+      .attr('y', 30)
+      .attr('text-anchor', 'middle')
+      .text('Total Cases (log scale)');
+
+    g.append('g')
+      .attr('class', 'axis axis--y')
+      .call(d3.axisLeft(y).tickFormat(d3.format('.1s')))
+      .append('text')
+      .attr('fill', '#000')
+      .attr('transform', 'rotate(-90)')
+      .attr('y', -40)
+      .attr('x', -innerHeight / 2)
+      .attr('text-anchor', 'middle')
+      .text('Total Deaths (log scale)');
+
+    // Add dots
+    g.selectAll('.dot')
+      .data(plotData)
+      .enter().append('circle')
+      .attr('class', 'dot')
+      .attr('cx', d => x(d.value))
+      .attr('cy', d => y(d.TotalDeaths))
+      .attr('r', 5)
+      .attr('fill', 'steelblue')
+      .on('mouseover', function(event, d) {
+        d3.select(this).attr('r', 8).attr('fill', 'orange');
+        
+        const tooltip = d3.select(container)
+          .append('div')
+          .attr('class', 'tooltip')
+          .style('opacity', 0)
+          .html(`<strong>${d.CountryName}</strong><br/>
+                 Cases: ${d.value.toLocaleString()}<br/>
+                 Deaths: ${d.TotalDeaths.toLocaleString()}<br/>
+                 Death Rate: ${(d.TotalDeaths / d.value * 100).toFixed(2)}%`)
+          .style('left', (event.pageX + 5) + 'px')
+          .style('top', (event.pageY - 28) + 'px');
+
+        tooltip.transition()
+          .duration(200)
+          .style('opacity', .9);
+      })
+      .on('mouseout', function() {
+        d3.select(this).attr('r', 5).attr('fill', 'steelblue');
+        d3.select(container).select('.tooltip').remove();
+      });
   }
 }

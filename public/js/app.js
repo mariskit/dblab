@@ -1,252 +1,154 @@
-document.addEventListener('DOMContentLoaded', async () => {
-  // Configuración inicial
-  const chartManager = new ChartManager();
-  const loadingScreen = document.querySelector('.loading-screen');
-  const errorBanner = createErrorBanner();
-  
-  // Elementos del DOM
-  const elements = {
-    countrySelect: document.getElementById('country-select'),
-    metricSelect: document.getElementById('metric-select'),
-    dateRangeSelect: document.getElementById('date-range'),
-    updateBtn: document.getElementById('update-btn'),
-    totalCases: document.getElementById('total-cases'),
-    totalDeaths: document.getElementById('total-deaths'),
-    totalVaccinations: document.getElementById('total-vaccinations'),
-    lastUpdated: document.getElementById('last-updated'),
-    chartContexts: {
-      timeSeries: document.getElementById('timeSeriesChart').getContext('2d'),
-      map: document.getElementById('mapChart').getContext('2d'),
-      bar: document.getElementById('barChart').getContext('2d'),
-      pie: document.getElementById('pieChart').getContext('2d'),
-      scatter: document.getElementById('scatterChart').getContext('2d')
-    }
-  };
+// Estado de la aplicación
+let appState = {
+  loading: false,
+  lastUpdate: null,
+  currentData: null
+};
 
-  // Estado de la aplicación
-  let appState = {
-    isLoading: false,
-    selectedCountry: '',
-    selectedMetric: 'TotalCases',
-    data: {
-      countries: [],
-      summary: [],
-      map: []
-    }
-  };
-
-  // Inicialización
-  initializeApplication();
-
-  // Funciones principales
-  function createErrorBanner() {
-    const banner = document.createElement('div');
-    banner.className = 'error-banner hidden';
-    document.body.prepend(banner);
-    return banner;
+// Función para mostrar estado de carga
+function setLoadingState(isLoading) {
+  appState.loading = isLoading;
+  const loader = document.getElementById('loadingIndicator');
+  if (loader) {
+    loader.style.display = isLoading ? 'block' : 'none';
   }
-
-  function showError(message, isRetryable = false) {
-    errorBanner.innerHTML = message;
-    errorBanner.className = 'error-banner';
-    
-    if (isRetryable) {
-      const retryBtn = document.createElement('button');
-      retryBtn.className = 'retry-btn';
-      retryBtn.textContent = 'Reintentar';
-      retryBtn.addEventListener('click', () => {
-        errorBanner.classList.add('hidden');
-        initializeApplication();
-      });
-      errorBanner.appendChild(retryBtn);
-    }
-  }
-
-  function setLoading(loading) {
-    appState.isLoading = loading;
-    loadingScreen.classList.toggle('hidden', !loading);
-  }
-
-  async function initializeApplication() {
-    if (appState.isLoading) return;
-    
-    try {
-      setLoading(true);
-      errorBanner.classList.add('hidden');
-
-      // Cargar datos en paralelo
-      const [countries, summary, mapData] = await Promise.all([
-        CovidAPI.getCountries(),
-        CovidAPI.getSummaryData(),
-        CovidAPI.getMapData()
-      ]);
-
-      // Actualizar estado
-      appState.data = { countries, summary, mapData };
-      
-      // Actualizar UI
-      updateGlobalSummary();
-      populateCountrySelect();
-      initializeCharts();
-      
-      // Actualizar timestamp
-      elements.lastUpdated.textContent = new Date().toLocaleString();
-      
-    } catch (error) {
-      console.error('Initialization error:', error);
-      showError(error.message, true);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-function updateGlobalSummary() {
-  const { summary } = appState.data;
-  const totals = summary.reduce((acc, item) => ({
-    cases: acc.cases + (item.TotalCases || 0),
-    deaths: acc.deaths + (item.TotalDeaths || 0),
-    vaccinations: acc.vaccinations + (item.TotalVaccinations || 0)
-  }), { cases: 0, deaths: 0, vaccinations: 0 });
-
-  elements.totalCases.textContent = totals.cases.toLocaleString();
-  elements.totalDeaths.textContent = totals.deaths.toLocaleString();
-  elements.totalVaccinations.textContent = totals.vaccinations.toLocaleString();
 }
 
-  async function populateCountrySelect() {
-    const select = document.getElementById('country-select');
-    
-    try {
-      // Mostrar estado "Cargando..."
-      select.innerHTML = '';
-      select.disabled = true;
-      select.add(new Option('Cargando países...', '', true, true));
-      
-      // Fetch de países
-      const countries = await CovidAPI.getCountries();
-      
-      // Limpiar y habilitar el dropdown
-      select.innerHTML = '';
-      select.disabled = false;
-      
-      // Opción por defecto
-      select.add(new Option('Seleccione un país', '', true, false));
-      
-      // Llenar opciones
-      countries.forEach(country => {
-        select.add(new Option(country.CountryName, country.CountryCode));
-      });
-      
-      // Event listener
-      select.addEventListener('change', handleCountryChange);
-      
-    } catch (error) {
-      // Mostrar error en el dropdown si falla
-      select.innerHTML = '';
-      select.add(new Option('Error al cargar países', '', true, true));
-      select.disabled = true;
-      
-      console.error('Error loading countries:', error);
-      showError('No se pudieron cargar los países. ', true);
-    }
-  }
+// Función mejorada para cargar datos iniciales
+async function loadInitialData() {
+  setLoadingState(true);
+  try {
+    // Cargar estadísticas globales
+    const [statsResponse, countriesResponse] = await Promise.all([
+      fetch('/api/stats'),
+      fetch('/api/countries')
+    ]);
 
-  async function handleCountryChange(e) {
-    appState.selectedCountry = e.target.value;
-    if (!appState.selectedCountry) return;
-    
-    try {
-      setLoading(true);
-      const timeSeriesData = await CovidAPI.getTimeSeriesData(appState.selectedCountry);
-      chartManager.initTimeSeriesChart(
-        elements.chartContexts.timeSeries, 
-        timeSeriesData, 
-        appState.selectedMetric
-      );
-    } catch (error) {
-      console.error('Error loading country data:', error);
-      showError(`Error al cargar datos para ${appState.selectedCountry}`);
-    } finally {
-      setLoading(false);
+    if (!statsResponse.ok || !countriesResponse.ok) {
+      throw new Error('Error al cargar datos iniciales');
     }
-  }
 
-  function initializeCharts() {
-    try {
-      const { summary, mapData } = appState.data;
-      
-      // Gráfico de mapa
-      chartManager.initMapChart(elements.chartContexts.map, mapData);
-      
-      // Gráfico de barras
-      chartManager.initBarChart(
-        elements.chartContexts.bar, 
-        summary, 
-        appState.selectedMetric
-      );
-      
-      // Gráfico de pastel
-      chartManager.initPieChart(elements.chartContexts.pie, summary);
-      
-      // Gráfico de dispersión
-      chartManager.initScatterChart(elements.chartContexts.scatter, summary);
-      
-    } catch (error) {
-      console.error('Error initializing charts:', error);
-      showError('Error al inicializar gráficos');
-    }
-  }
+    const [stats, countries] = await Promise.all([
+      statsResponse.json(),
+      countriesResponse.json()
+    ]);
 
-  // Event listeners
-  elements.metricSelect.addEventListener('change', (e) => {
-    appState.selectedMetric = e.target.value;
-    chartManager.initBarChart(
-      elements.chartContexts.bar, 
-      appState.data.summary, 
-      appState.selectedMetric
-    );
+    // Actualizar el estado de la aplicación
+    appState.lastUpdate = new Date();
+    appState.currentData = stats;
+
+    // Actualizar UI
+    updateDataUI(stats);
+    updateCountriesDropdown(countries);
     
-    if (appState.selectedCountry) {
-      handleCountryChange({ target: { value: appState.selectedCountry } });
-    }
+    // Actualizar gráficos automáticamente
+    await updateCharts();
+    
+  } catch (error) {
+    console.error('Error loading initial data:', error);
+    showErrorState();
+  } finally {
+    setLoadingState(false);
+  }
+}
+
+// Función para actualizar la UI con nuevos datos
+function updateDataUI(data) {
+  document.getElementById('totalCases').textContent = 
+    data.totalCases?.toLocaleString() || 'N/A';
+  document.getElementById('totalDeaths').textContent = 
+    data.totalDeaths?.toLocaleString() || 'N/A';
+  document.getElementById('totalVaccinations').textContent = 
+    data.totalVaccinations?.toLocaleString() || 'N/A';
+  document.getElementById('lastUpdate').textContent = 
+    data.lastDate ? new Date(data.lastDate).toLocaleString() : 'N/A';
+}
+
+// Función para actualizar el dropdown de países
+function updateCountriesDropdown(countries) {
+  const countrySelect = document.getElementById('countrySelect');
+  countrySelect.innerHTML = '<option value="">All Countries</option>';
+  countries.forEach(country => {
+    const option = document.createElement('option');
+    option.value = country;
+    option.textContent = country;
+    countrySelect.appendChild(option);
   });
+}
 
-  elements.dateRangeSelect.addEventListener('change', async (e) => {
-    if (!appState.selectedCountry) return;
-    
-    const range = e.target.value;
-    let startDate = null;
-    
-    if (range !== 'all') {
-      const today = new Date();
-      const newDate = new Date(today);
-      
-      if (range === '1y') newDate.setFullYear(today.getFullYear() - 1);
-      if (range === '6m') newDate.setMonth(today.getMonth() - 6);
-      if (range === '3m') newDate.setMonth(today.getMonth() - 3);
-      
-      startDate = newDate.toISOString().split('T')[0];
+// Función para mostrar estado de error
+function showErrorState() {
+  document.getElementById('totalCases').textContent = 'Error';
+  document.getElementById('totalDeaths').textContent = 'Error';
+  document.getElementById('totalVaccinations').textContent = 'Error';
+  document.getElementById('lastUpdate').textContent = 'Error';
+}
+
+// Función mejorada para actualizar gráficos
+async function updateCharts() {
+  if (appState.loading) return;
+  
+  setLoadingState(true);
+  try {
+    const country = document.getElementById('countrySelect').value;
+    const metric = document.getElementById('metricSelect').value;
+    const period = document.getElementById('timePeriod').value;
+
+    // Obtener datos para todos los gráficos en paralelo
+    const [timeSeriesData, geoData, mortalityData] = await Promise.all([
+      CovidAPI.getTimeSeriesData(country, metric, period),
+      CovidAPI.getGeoData(metric, period),
+      CovidAPI.getMortalityRateData(period)
+    ]);
+
+    // Actualizar gráficos solo si hay datos
+    if (timeSeriesData?.length) {
+      Charts.createTimeSeriesChart('timeSeriesChart', timeSeriesData, metric);
     }
     
-    try {
-      setLoading(true);
-      const timeSeriesData = await CovidAPI.getTimeSeriesData(
-        appState.selectedCountry, 
-        startDate
-      );
-      
-      chartManager.initTimeSeriesChart(
-        elements.chartContexts.timeSeries, 
-        timeSeriesData, 
-        appState.selectedMetric
-      );
-    } catch (error) {
-      console.error('Error loading date range:', error);
-      showError('Error al cargar rango de fechas');
-    } finally {
-      setLoading(false);
+    if (geoData?.length) {
+      Charts.createGeoChart('geoChart', geoData, metric);
+      Charts.createBarChart('barChart', geoData, metric);
     }
-  });
+    
+    if (mortalityData?.length) {
+      Charts.createMortalityRateChart('mortalityRateChart', mortalityData);
+    }
 
-  elements.updateBtn.addEventListener('click', initializeApplication);
+    // Actualizar scatter plot
+    if (geoData) {
+      const deathsData = await CovidAPI.getGeoData('TotalDeaths', period);
+      if (deathsData) {
+        const combinedData = geoData.map(item => {
+          const deathItem = deathsData.find(d => d.CountryName === item.CountryName);
+          return {
+            ...item,
+            TotalDeaths: deathItem ? deathItem.value : 0
+          };
+        }).filter(d => d.value > 0 && d.TotalDeaths > 0);
+        
+        if (combinedData.length) {
+          Charts.createScatterPlot('scatterPlot', combinedData);
+        }
+      }
+    }
+    
+  } catch (error) {
+    console.error('Error updating charts:', error);
+    // Opcional: Mostrar notificación al usuario
+  } finally {
+    setLoadingState(false);
+  }
+}
+
+// Inicialización de la aplicación
+document.addEventListener('DOMContentLoaded', () => {
+  // Configurar evento de actualización
+  document.getElementById('updateCharts').addEventListener('click', updateCharts);
+  
+  // Cargar datos iniciales
+  loadInitialData();
+  
+  // Actualizar automáticamente cada 5 minutos
+  setInterval(loadInitialData, 5 * 60 * 1000);
 });
