@@ -127,247 +127,297 @@ class Charts {
       });
   }
 
-  static createGeoChart(containerId, data, metric) {
-    const container = document.querySelector(`#${containerId} .chart-container`);
-    if (!container) {
-      console.error(`Container not found: #${containerId} .chart-container`);
-      return;
-    }
-    
-    container.innerHTML = '';
-    
-    if (!data || data.length === 0) {
-      container.innerHTML = '<p class="no-data">No geographical data available</p>';
-      return;
-    }
-
-    const width = container.clientWidth;
-    const height = container.clientHeight;
-
-    const svg = d3.select(container)
-      .append('svg')
-      .attr('width', width)
-      .attr('height', height);
-
-    // Crear un mapa de datos por país para búsqueda rápida
-    const dataMap = new Map();
-    data.forEach(d => {
-      // Normalizar nombres de países para hacer coincidencias más robustas
-      const normalizedCountry = d.CountryName.toLowerCase().trim();
-      dataMap.set(normalizedCountry, +d.value);
-    });
-
-    // Mapeo de nombres alternativos para países problemáticos
-    const countryAliases = {
-      // América
-      'united states': 'united states of america',
-      'usa': 'united states of america',
-      'us': 'united states of america',
-      'united states of america': 'united states of america',
-      'united states of america, us': 'united states of america',
+    static createTimeSeriesChart(containerId, data, metric) {
+      const container = document.querySelector(`#${containerId} .chart-container`);
+      container.innerHTML = '';
       
-      // Europa
-      'czech republic': 'czechia',
-      'czech rep.': 'czechia',
-      'bosnia and herzegovina': 'bosnia and herz.',
-      'bosnia & herzegovina': 'bosnia and herz.',
-      'bosnia': 'bosnia and herz.',
-      'macedonia': 'north macedonia',
-      'republic of north macedonia': 'north macedonia',
-      'vatican city': 'vatican',
-      'holy see': 'vatican',
-      
-      // África
-      'democratic republic of congo': 'dem. rep. congo',
-      'democratic republic of the congo': 'dem. rep. congo',
-      'dr congo': 'dem. rep. congo',
-      'congo, dem. rep.': 'dem. rep. congo',
-      'congo (kinshasa)': 'dem. rep. congo',
-      'republic of the congo': 'congo',
-      'congo republic': 'congo',
-      'congo (brazzaville)': 'congo',
-      'côte d\'ivoire': 'côte d\'ivoire',
-      'cote d\'ivoire': 'côte d\'ivoire',
-      'ivory coast': 'côte d\'ivoire',
-      'eswatini': 'eswatini',
-      'swaziland': 'eswatini',
-      'cape verde': 'cabo verde',
-      
-      // Asia
-      'myanmar': 'myanmar (burma)',
-      'burma': 'myanmar (burma)',
-      'south korea': 's. korea',
-      'korea, south': 's. korea',
-      'korea (south)': 's. korea',
-      'republic of korea': 's. korea',
-      'north korea': 'n. korea',
-      'korea, north': 'n. korea',
-      'korea (north)': 'n. korea',
-      'democratic people\'s republic of korea': 'n. korea',
-      'taiwan': 'taiwan',
-      'taiwan*': 'taiwan',
-      'taiwan (province of china)': 'taiwan',
-      'palestine': 'palestine',
-      'palestinian territory': 'palestine',
-      'west bank and gaza': 'palestine',
-      'syria': 'syria',
-      'syrian arab republic': 'syria',
-      
-      // Oceanía
-      'micronesia': 'micronesia (federated states of)'
-    };
+      if (!data || data.length === 0) {
+        container.innerHTML = '<p class="no-data">No data available</p>';
+        return;
+      }
   
-    // Función para encontrar el valor de un país
-    const getCountryValue = (countryName) => {
-      if (!countryName) return null;
+      const width = container.clientWidth;
+      const height = container.clientHeight;
       
-      let normalized = countryName.toLowerCase().trim();
-      
-      // 1. Verificar alias primero
-      if (countryAliases[normalized]) {
-        normalized = countryAliases[normalized];
-        if (dataMap.has(normalized)) {
-          return dataMap.get(normalized);
-        }
-      }
-      
-      // 2. Intentar coincidencias exactas
-      if (dataMap.has(normalized)) {
-        return dataMap.get(normalized);
-      }
-      
-      // 3. Intentar coincidencias parciales
-      for (const [key, value] of dataMap) {
-        const keyNormalized = key.toLowerCase();
-        if (normalized.includes(keyNormalized) || keyNormalized.includes(normalized)) {
-          return value;
-        }
-      }
-      
-      // 4. Intentar eliminar partes entre paréntesis
-      const simplifiedName = normalized.replace(/\(.*\)/, '').trim();
-      if (simplifiedName !== normalized && dataMap.has(simplifiedName)) {
-        return dataMap.get(simplifiedName);
-      }
-      
-      return null; // No se encontraron datos
-    };
-
-    d3.json('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json').then(world => {
-      const countries = topojson.feature(world, world.objects.countries).features;
-
-      // Función para encontrar el valor de un país
-      const getCountryValue = (countryName) => {
-        let normalized = countryName.toLowerCase().trim();
-        
-        // Verificar alias primero
-        if (countryAliases[normalized]) {
-          normalized = countryAliases[normalized];
-        }
-        
-        // Buscar coincidencia exacta
-        if (dataMap.has(normalized)) {
-          return dataMap.get(normalized);
-        }
-        
-        // Buscar coincidencia parcial como fallback
-        for (const [key, value] of dataMap) {
-          if (normalized.includes(key) || key.includes(normalized)) {
-            return value;
-          }
-        }
-        
-        return null; // No se encontraron datos
+      this.margin = { 
+        top: 20, 
+        right: Math.min(50, width * 0.1), 
+        bottom: Math.min(60, height * 0.2), 
+        left: Math.min(70, width * 0.15) 
       };
-
-      // Escala de colores mejorada
-      const color = d3.scaleThreshold()
-        .domain([100, 1000, 10000, 100000, 500000, 1000000, 5000000, 10000000])
-        .range(d3.schemeBlues[8]);
-
-      // Dibujar los países
-      svg.selectAll('path')
-        .data(countries)
-        .enter().append('path')
-        .attr('d', d3.geoPath().projection(
-          d3.geoNaturalEarth1().fitSize([width, height], { type: 'Sphere' })
-        ))
-        .attr('fill', d => {
-          const value = getCountryValue(d.properties.name);
-          return value !== null ? color(value) : '#f5f5f5'; // Gris claro para países sin datos
-        })
-        .attr('stroke', '#fff')
-        .attr('stroke-width', 0.5)
+      
+      const innerWidth = width - this.margin.left - this.margin.right;
+      const innerHeight = height - this.margin.top - this.margin.bottom;
+  
+      const svg = d3.select(container)
+        .append('svg')
+        .attr('width', width)
+        .attr('height', height);
+  
+      const g = svg.append('g')
+        .attr('transform', `translate(${this.margin.left},${this.margin.top})`);
+  
+      const parseDate = d3.timeParse('%Y-%m-%d');
+      const cleanMetric = metric.replace('_', '');
+      data.forEach(d => {
+        d.RecordDate = parseDate(d.RecordDate);
+        d[cleanMetric] = +d[metric];
+      });
+  
+      const x = d3.scaleTime()
+        .domain(d3.extent(data, d => d.RecordDate))
+        .range([0, innerWidth]);
+  
+      const y = d3.scaleLinear()
+        .domain([0, d3.max(data, d => d[cleanMetric])])
+        .nice()
+        .range([innerHeight, 0]);
+  
+      const formatLargeNumber = d3.format(".2s");
+      const formatDate = d3.timeFormat("%b '%y");
+  
+      const line = d3.line()
+        .x(d => x(d.RecordDate))
+        .y(d => y(d[cleanMetric]))
+        .curve(d3.curveMonotoneX);
+  
+      g.append('g')
+        .attr('class', 'axis axis--x')
+        .attr('transform', `translate(0,${innerHeight})`)
+        .call(d3.axisBottom(x)
+          .ticks(Math.min(8, Math.floor(width / 80)))
+          .tickFormat(formatDate))
+        .selectAll("text")
+        .style("text-anchor", "end")
+        .attr("dx", "-.8em")
+        .attr("dy", ".15em")
+        .attr("transform", "rotate(-45)");
+  
+      g.append('g')
+        .attr('class', 'axis axis--y')
+        .call(d3.axisLeft(y)
+          .ticks(Math.min(6, Math.floor(height / 50)))
+          .tickFormat(d => d > 1000 ? formatLargeNumber(d) : d))
+        .append('text')
+        .attr('fill', '#000')
+        .attr('transform', 'rotate(-90)')
+        .attr('y', -this.margin.left + 15)
+        .attr('x', -innerHeight / 2)
+        .attr('text-anchor', 'middle')
+        .text(cleanMetric.replace(/([A-Z])/g, ' $1'));
+  
+      g.append('path')
+        .datum(data)
+        .attr('class', 'line')
+        .attr('d', line)
+        .attr('stroke', 'steelblue')
+        .attr('stroke-width', 2)
+        .attr('fill', 'none');
+  
+      g.selectAll('.dot')
+        .data(data)
+        .enter().append('circle')
+        .attr('class', 'dot')
+        .attr('cx', d => x(d.RecordDate))
+        .attr('cy', d => y(d[cleanMetric]))
+        .attr('r', 3)
+        .attr('fill', 'steelblue')
         .on('mouseover', function(event, d) {
-          d3.select(this).attr('stroke', '#000').attr('stroke-width', 1.5);
+          d3.select(this).attr('r', 6).attr('fill', 'orange');
           
-          const value = getCountryValue(d.properties.name);
-          const tooltipContent = value !== null ? 
-            `${d.properties.name}: ${value.toLocaleString()}` : 
-            `${d.properties.name}: No data available`;
-            
           d3.select('body').append('div')
             .attr('class', 'tooltip')
-            .html(tooltipContent)
-            .style('left', (event.pageX + 10) + 'px')
-            .style('top', (event.pageY - 10) + 'px');
-        })
-        .on('mousemove', function(event) {
-          d3.select('.tooltip')
+            .html(`<strong>${d3.timeFormat('%b %d, %Y')(d.RecordDate)}</strong><br/>
+                   ${cleanMetric.replace(/([A-Z])/g, ' $1')}: ${d[cleanMetric].toLocaleString()}`)
             .style('left', (event.pageX + 10) + 'px')
             .style('top', (event.pageY - 10) + 'px');
         })
         .on('mouseout', function() {
-          d3.select(this).attr('stroke', '#fff').attr('stroke-width', 0.5);
+          d3.select(this).attr('r', 3).attr('fill', 'steelblue');
           d3.select('.tooltip').remove();
         });
-
-      // Leyenda (código de leyenda permanece igual...)
-      const legend = svg.append('g')
-        .attr('transform', `translate(${width - 150}, ${height - 120})`);
-
-      legend.append('text')
-        .attr('x', 0)
-        .attr('y', -10)
-        .text(metric.replace(/([A-Z])/g, ' $1').trim())
-        .style('font-size', '12px')
-        .style('font-weight', 'bold');
-
-      legend.selectAll('rect')
-        .data(color.range().map((d, i) => {
+    }
+  
+    static createGeoChart(containerId, data, metric) {
+      const container = document.querySelector(`#${containerId} .chart-container`);
+      if (!container) {
+        console.error(`Container not found: #${containerId} .chart-container`);
+        return;
+      }
+      
+      container.innerHTML = '';
+      
+      if (!data || data.length === 0) {
+        container.innerHTML = '<p class="no-data">No geographical data available</p>';
+        return;
+      }
+  
+      const width = container.clientWidth;
+      const height = container.clientHeight;
+  
+      const svg = d3.select(container)
+        .append('svg')
+        .attr('width', width)
+        .attr('height', height);
+  
+      // Normalización de nombres
+      const normalizeName = (name) => {
+        return name.toLowerCase()
+          .replace(/[^a-z\s]/g, '')
+          .replace(/\s+/g, ' ')
+          .trim();
+      };
+  
+      // Mapeo de datos
+      const dataMap = new Map();
+      data.forEach(d => {
+        const normalized = normalizeName(d.CountryName);
+        dataMap.set(normalized, +d[metric] || +d.value || 0);
+      });
+  
+      // Mapeo especial para países problemáticos
+      const specialMappings = {
+        'cote divoire': { 
+          mapKey: 'cote divoire',
+          displayName: "Côte d'Ivoire",
+          topoName: "côte d'ivoire"
+        },
+        'bosnia and herzegovina': {
+          mapKey: 'bosnia and herzegovina',
+          displayName: "Bosnia and Herzegovina",
+          topoName: "bosnia and herz"
+        },
+        'democratic republic of congo': {
+          mapKey: 'democratic republic of congo',
+          displayName: "DR Congo",
+          topoName: "dem. rep. congo"
+        },
+        'dr congo': {
+          mapKey: 'democratic republic of congo',
+          displayName: "DR Congo",
+          topoName: "dem. rep. congo"
+        }
+      };
+  
+      // Función de búsqueda mejorada
+      const getCountryData = (topoName) => {
+        const normalizedTopo = normalizeName(topoName);
+        
+        // 1. Buscar en mapeos especiales
+        for (const [key, mapping] of Object.entries(specialMappings)) {
+          if (normalizedTopo.includes(mapping.topoName)) {
+            return {
+              value: dataMap.get(mapping.mapKey),
+              displayName: mapping.displayName
+            };
+          }
+        }
+        
+        // 2. Búsqueda normal
+        for (const [dataName, value] of dataMap) {
+          if (normalizedTopo.includes(dataName) || dataName.includes(normalizedTopo)) {
+            return {
+              value: value,
+              displayName: topoName // Usar el nombre original del mapa
+            };
+          }
+        }
+        
+        console.log(`No match for: ${topoName} (normalized: ${normalizedTopo})`);
+        return {
+          value: null,
+          displayName: topoName
+        };
+      };
+  
+      d3.json('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json').then(world => {
+        const countries = topojson.feature(world, world.objects.countries).features;
+  
+        // Escala de colores
+        const maxValue = d3.max(Array.from(dataMap.values()));
+        const color = d3.scaleThreshold()
+          .domain([100, 1000, 10000, 100000, 1000000, 10000000])
+          .range(d3.schemeBlues[7]);
+  
+        // Proyección
+        const projection = d3.geoNaturalEarth1()
+          .fitSize([width, height], { type: 'Sphere' });
+  
+        // Dibujar países
+        svg.selectAll('path')
+          .data(countries)
+          .enter().append('path')
+          .attr('d', d3.geoPath().projection(projection))
+          .attr('fill', d => {
+            const countryData = getCountryData(d.properties.name);
+            return countryData.value !== null ? color(countryData.value) : '#f5f5f5';
+          })
+          .attr('stroke', '#fff')
+          .attr('stroke-width', 0.5)
+          .on('mouseover', function(event, d) {
+            d3.select(this).attr('stroke', '#000').attr('stroke-width', 1.5);
+            
+            const countryData = getCountryData(d.properties.name);
+            const tooltipContent = countryData.value !== null ? 
+              `<strong>${countryData.displayName}</strong><br/>${metric}: ${countryData.value.toLocaleString()}` : 
+              `<strong>${countryData.displayName}</strong><br/>No data available`;
+              
+            d3.select('body').append('div')
+              .attr('class', 'tooltip')
+              .html(tooltipContent)
+              .style('left', (event.pageX + 10) + 'px')
+              .style('top', (event.pageY - 10) + 'px');
+          })
+          .on('mouseout', function() {
+            d3.select(this).attr('stroke', '#fff').attr('stroke-width', 0.5);
+            d3.select('.tooltip').remove();
+          });
+  
+        // Leyenda
+        const legend = svg.append('g')
+          .attr('transform', `translate(${width - 180}, ${height - 150})`);
+  
+        legend.append('text')
+          .attr('x', 0)
+          .attr('y', -10)
+          .text(metric.replace(/([A-Z])/g, ' $1').trim())
+          .style('font-size', '12px')
+          .style('font-weight', 'bold');
+  
+        const legendItems = color.range().map((d, i) => {
           const extent = color.invertExtent(d);
           return {
             color: d,
-            label: extent[0] ? `${Math.round(extent[0]).toLocaleString()}+` : 'No data'
+            label: extent[0] ? 
+              `${extent[0].toLocaleString()}${extent[1] ? `-${extent[1].toLocaleString()}` : '+'}` : 
+              'No data'
           };
-        }))
-        .enter().append('rect')
-        .attr('width', 10)
-        .attr('height', 10)
-        .attr('x', 0)
-        .attr('y', (d, i) => i * 15)
-        .attr('fill', d => d.color);
+        });
+  
+        legend.selectAll('rect')
+          .data(legendItems)
+          .enter().append('rect')
+          .attr('width', 12)
+          .attr('height', 12)
+          .attr('x', 0)
+          .attr('y', (d, i) => i * 15)
+          .attr('fill', d => d.color);
+  
+        legend.selectAll('text.legend')
+          .data(legendItems)
+          .enter().append('text')
+          .attr('class', 'legend')
+          .attr('x', 15)
+          .attr('y', (d, i) => i * 15 + 10)
+          .text(d => d.label)
+          .style('font-size', '10px');
+  
+      }).catch(err => {
+        console.error('Error loading world map:', err);
+        container.innerHTML = '<p class="no-data">Error loading map data</p>';
+      });
+    }
 
-      legend.selectAll('text.legend')
-        .data(color.range().map((d, i) => {
-          const extent = color.invertExtent(d);
-          return {
-            color: d,
-            label: extent[0] ? `${Math.round(extent[0]).toLocaleString()}+` : 'No data'
-          };
-        }))
-        .enter().append('text')
-        .attr('class', 'legend')
-        .attr('x', 15)
-        .attr('y', (d, i) => i * 15 + 9)
-        .text(d => d.label)
-        .style('font-size', '10px');
-
-    }).catch(err => {
-      console.error('Error loading world map:', err);
-      container.innerHTML = '<p class="no-data">Error loading map data</p>';
-    });
-}
 
   static createMortalityRateChart(containerId, data) {
     const container = document.querySelector(`#${containerId} .chart-container`);
