@@ -43,17 +43,35 @@ async function loadInitialData() {
 }
 
 // Función para actualizar la UI con nuevos datos
+// Función para actualizar la UI con nuevos datos y formato en español
 function updateDataUI(data) {
   if (!data) return;
   
-  document.getElementById('totalCases').textContent = 
-    data.totalCases?.toLocaleString() || 'N/A';
-  document.getElementById('totalDeaths').textContent = 
-    data.totalDeaths?.toLocaleString() || 'N/A';
-  document.getElementById('totalVaccinations').textContent = 
-    data.totalVaccinations?.toLocaleString() || 'N/A';
-  document.getElementById('lastUpdate').textContent = 
-    data.lastDate ? new Date(data.lastDate).toLocaleString() : 'N/A';
+  // Función para formatear números con puntos como separador de miles
+  const formatNumber = (value) => {
+    if (value === null || value === undefined) return 'N/A';
+    return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  };
+
+  // Función para formatear fechas en español
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    const options = {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZoneName: 'short'
+    };
+    return new Date(dateString).toLocaleString('es-ES', options);
+  };
+
+  // Actualizar los elementos de la UI
+  document.getElementById('totalCases').textContent = formatNumber(data.totalCases) || 'N/A';
+  document.getElementById('totalDeaths').textContent = formatNumber(data.totalDeaths) || 'N/A';
+  document.getElementById('totalVaccinations').textContent = formatNumber(data.totalVaccinations) || 'N/A';
+  document.getElementById('lastUpdate').textContent = formatDate(data.lastDate) || 'N/A';
 }
 
 // Función para actualizar el dropdown de países
