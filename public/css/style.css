@@ -141,9 +141,9 @@ body {
 }
 
 .charts-container {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
-  gap: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
   margin-top: 20px;
 }
 
@@ -154,6 +154,7 @@ body {
   box-shadow: var(--shadow);
   transition: var(--transition);
   animation: fadeIn 1s ease;
+  width: 100%;
 }
 
 .chart-card:hover {
@@ -170,9 +171,9 @@ body {
 
 .chart-container {
   width: 100%;
-  height: 300px;
+  height: 400px; 
+  min-height: 400px;
 }
-
 /* Animations */
 @keyframes fadeIn {
   from { opacity: 0; }
@@ -192,9 +193,9 @@ body {
 
 /* Responsive adjustments */
 @media (max-width: 768px) {
-  .stats-container {
-    flex-direction: column;
-    align-items: center;
+  .chart-container {
+    height: 300px;
+    min-height: 300px;
   }
   
   .stat-card {
@@ -216,4 +217,55 @@ body {
   color: #666;
   font-style: italic;
   padding: 20px;
+}
+
+.tooltip {
+  position: absolute;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  border-radius: 4px;
+  pointer-events: none;
+  font-size: 14px;
+  z-index: 100;
+  transform: translate(10px, -50%);
+  max-width: 300px;
+}
+
+.tooltip strong {
+  color: #fff;
+  display: block;
+  margin-bottom: 5px;
+}
+
+/* Mejoras para los ejes */
+.axis text {
+  font-size: 12px;
+  fill: #555;
+}
+
+.axis path,
+.axis line {
+  fill: none;
+  stroke: #ddd;
+  shape-rendering: crispEdges;
+}
+
+.axis--x text {
+  font-size: 11px;
+}
+
+.axis--y text {
+  font-size: 12px;
+}
+
+/* Para pantallas pequeñas */
+@media (max-width: 768px) {
+  .axis text {
+    font-size: 10px;
+  }
+  
+  .axis--x text {
+    font-size: 9px;
+  }
 }

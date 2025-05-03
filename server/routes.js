@@ -120,34 +120,36 @@ router.get('/api/geo-data', async (req, res) => {
 
     const pool = await poolPromise;
     const result = await pool.request().query(`
-      -- Obtenemos los últimos datos para cada país
-      WITH UltimosDatos AS (
+      -- 1. Encontrar la última fecha con valor > 0 para cada país
+      WITH UltimosValidos AS (
         SELECT 
             CountryCode,
             MAX(RecordDate) AS UltimaFecha
         FROM CovidData
-        WHERE ${metric} IS NOT NULL
+        WHERE ${metric} > 0  -- Solo valores mayores que cero
         ${dateCondition}
         GROUP BY CountryCode
       ),
       
-      -- Obtenemos los valores más recientes para la métrica seleccionada
-      DatosRecientes AS (
+      -- 2. Obtener los valores correspondientes a esas fechas
+      DatosFiltrados AS (
         SELECT 
           cd.CountryCode,
           c.CountryName,
-          CAST(cd.${metric} AS FLOAT) AS value
+          CAST(cd.${metric} AS FLOAT) AS value,
+          cd.RecordDate
         FROM CovidData cd
-        JOIN UltimosDatos ud ON cd.CountryCode = ud.CountryCode AND cd.RecordDate = ud.UltimaFecha
+        JOIN UltimosValidos uv ON cd.CountryCode = uv.CountryCode AND cd.RecordDate = uv.UltimaFecha
         JOIN Countries c ON cd.CountryCode = c.CountryCode
+        WHERE cd.${metric} > 0  -- Doble verificación
       )
       
-      -- Combinamos con todos los países para asegurarnos de incluirlos todos
+      -- 3. Unir con todos los países para mantener consistencia
       SELECT 
         c.CountryName,
-        COALESCE(dr.value, 0) AS value
+        COALESCE(df.value, 0) AS value
       FROM Countries c
-      LEFT JOIN DatosRecientes dr ON c.CountryName = dr.CountryName
+      LEFT JOIN DatosFiltrados df ON c.CountryName = df.CountryName
       ORDER BY c.CountryName
     `);
     
