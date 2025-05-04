@@ -2,6 +2,83 @@ const express = require('express');
 const { poolPromise, sql } = require('./db'); // Asegúrate de importar sql aquí
 const router = express.Router();
 
+router.get('/api/global-time-series', async (req, res) => {
+  try {
+    const { metric, period } = req.query;
+    const validMetrics = ['TotalCases', 'NewCases', 'TotalDeaths', 'NewDeaths', 'TotalVaccinations'];
+    
+    if (!validMetrics.includes(metric)) {
+      return res.status(400).json({ error: 'Métrica no válida' });
+    }
+
+    // Configurar timeout extendido
+    const pool = await poolPromise;
+    pool.config.requestTimeout = 30000;
+
+    if (metric.startsWith('Total')) {
+      // Consulta optimizada para métricas acumulativas
+      const result = await pool.request().query(`
+        -- Paso 1: Obtener el último valor no nulo por país y fecha
+        WITH UltimosValores AS (
+          SELECT 
+            CountryCode,
+            RecordDate,
+            ${metric},
+            ROW_NUMBER() OVER (
+              PARTITION BY CountryCode, CAST(RecordDate AS DATE)
+              ORDER BY RecordDate DESC
+            ) AS rn
+          FROM CovidData
+          WHERE ${metric} IS NOT NULL AND ${metric} > 0
+          ${period === 'lastYear' ? "AND RecordDate >= DATEADD(YEAR, -1, GETDATE())" : ""}
+          ${period === 'last6Months' ? "AND RecordDate >= DATEADD(MONTH, -6, GETDATE())" : ""}
+        )
+        
+        -- Paso 2: Sumar por fecha y calcular máximo acumulado
+        SELECT 
+          FORMAT(RecordDate, 'yyyy-MM-dd') AS RecordDate,
+          SUM(CAST(${metric} AS FLOAT)) AS ${metric}
+        FROM UltimosValores
+        WHERE rn = 1
+        GROUP BY RecordDate
+        ORDER BY RecordDate
+      `);
+
+      // Procesamiento para asegurar no decrecimiento
+      let maxValue = 0;
+      const processedData = result.recordset.map(item => {
+        maxValue = Math.max(maxValue, item[metric] || 0);
+        return {
+          RecordDate: item.RecordDate,
+          [metric]: maxValue
+        };
+      });
+
+      res.json(processedData);
+    } else {
+      // Consulta para métricas diarias (NewCases, NewDeaths)
+      const result = await pool.request().query(`
+        SELECT 
+          FORMAT(RecordDate, 'yyyy-MM-dd') AS RecordDate,
+          SUM(CAST(${metric} AS FLOAT)) AS ${metric}
+        FROM CovidData
+        WHERE ${metric} IS NOT NULL
+        ${period === 'lastYear' ? "AND RecordDate >= DATEADD(YEAR, -1, GETDATE())" : ""}
+        ${period === 'last6Months' ? "AND RecordDate >= DATEADD(MONTH, -6, GETDATE())" : ""}
+        GROUP BY RecordDate
+        ORDER BY RecordDate
+      `);
+
+      res.json(result.recordset);
+    }
+  } catch (err) {
+    console.error('Error en global-time-series:', err);
+    res.status(500).json({ 
+      error: 'Error en el servidor',
+      details: 'Por favor, intente con un rango de fechas más pequeño'
+    });
+  }
+});
 // Ruta para obtener estadísticas globales actualizada
 router.get('/api/stats', async (req, res) => {
   try {

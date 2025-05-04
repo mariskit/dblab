@@ -101,63 +101,79 @@ async function updateCharts() {
     // Determinar qué gráficos actualizar
     const isTotalMetric = ['TotalCases', 'TotalDeaths', 'TotalVaccinations'].includes(metric);
 
-    const requests = [
+    // Cargar todos los gráficos siempre
+    const [timeSeriesData, geoData, mortalityData] = await Promise.all([
       CovidAPI.getTimeSeriesData(country, metric, period),
       isTotalMetric ? CovidAPI.getGeoData(metric, period) : Promise.resolve(null),
       CovidAPI.getMortalityRateData(period)
-    ];
+    ]);
 
-    const [timeSeriesData, geoData, mortalityData] = await Promise.all(requests);
-
-    // Actualizar gráficos
-    if (timeSeriesData?.length) {
-      Charts.createTimeSeriesChart('timeSeriesChart', timeSeriesData, metric);
-    } else {
-      document.querySelector('#timeSeriesChart .chart-container').innerHTML = 
-        '<p class="no-data">No time series data available</p>';
-    }
-    
-    if (isTotalMetric) {
-      if (geoData?.length) {
-        Charts.createGeoChart('geoChart', geoData, metric);
-        Charts.createBarChart('barChart', geoData, metric);
-        
-        // Scatter plot solo para TotalCases vs TotalDeaths
-        if (metric === 'TotalCases') {
-          const deathsData = await CovidAPI.getGeoData('TotalDeaths', period);
-          if (deathsData?.length) {
-            const combinedData = geoData.map(item => {
-              const deathItem = deathsData.find(d => d.CountryName === item.CountryName);
-              return {
-                ...item,
-                TotalDeaths: deathItem ? deathItem.value : 0
-              };
-            }).filter(d => d.value > 0 && d.TotalDeaths > 0);
-            
-            if (combinedData.length) {
-              Charts.createScatterPlot('scatterPlot', combinedData);
-            }
-          }
-        }
-      } else {
-        document.querySelector('#geoChart .chart-container').innerHTML = 
-          '<p class="no-data">No geographical data available</p>';
-        document.querySelector('#barChart .chart-container').innerHTML = 
-          '<p class="no-data">No country comparison data available</p>';
-      }
-    }
-    
-    if (mortalityData?.length) {
-      Charts.createMortalityRateChart('mortalityRateChart', mortalityData);
-    } else {
-      document.querySelector('#mortalityRateChart .chart-container').innerHTML = 
-        '<p class="no-data">No mortality rate data available</p>';
-    }
+    // Actualizar todos los gráficos independientemente de la selección
+    updateAllCharts(timeSeriesData, geoData, mortalityData, metric, period, country);
 
   } catch (error) {
     console.error('Error updating charts:', error);
   } finally {
     setLoadingState(false);
+  }
+}
+
+// Nueva función para actualizar todos los gráficos
+function updateAllCharts(timeSeriesData, geoData, mortalityData, metric, period, country) {
+  // Time Series Chart (siempre visible)
+  if (timeSeriesData?.length) {
+    Charts.createTimeSeriesChart('timeSeriesChart', timeSeriesData, metric);
+  } else {
+    document.querySelector('#timeSeriesChart .chart-container').innerHTML = 
+      '<p class="no-data">No time series data available</p>';
+  }
+  
+  // Geo Chart (solo para métricas totales)
+  if (['TotalCases', 'TotalDeaths', 'TotalVaccinations'].includes(metric)) {
+    if (geoData?.length) {
+      Charts.createGeoChart('geoChart', geoData, metric);
+      Charts.createBarChart('barChart', geoData, metric);
+      
+      // Scatter plot solo para TotalCases vs TotalDeaths
+      if (metric === 'TotalCases' && !country) {
+        updateScatterPlot(geoData, period);
+      }
+    } else {
+      document.querySelector('#geoChart .chart-container').innerHTML = 
+        '<p class="no-data">No geographical data available</p>';
+      document.querySelector('#barChart .chart-container').innerHTML = 
+        '<p class="no-data">No country comparison data available</p>';
+    }
+  }
+  
+  // Mortality Rate Chart (siempre visible)
+  if (mortalityData?.length) {
+    Charts.createMortalityRateChart('mortalityRateChart', mortalityData);
+  } else {
+    document.querySelector('#mortalityRateChart .chart-container').innerHTML = 
+      '<p class="no-data">No mortality rate data available</p>';
+  }
+}
+
+// Función auxiliar para actualizar el scatter plot
+async function updateScatterPlot(geoData, period) {
+  try {
+    const deathsData = await CovidAPI.getGeoData('TotalDeaths', period);
+    if (deathsData?.length) {
+      const combinedData = geoData.map(item => {
+        const deathItem = deathsData.find(d => d.CountryName === item.CountryName);
+        return {
+          ...item,
+          TotalDeaths: deathItem ? deathItem.value : 0
+        };
+      }).filter(d => d.value > 0 && d.TotalDeaths > 0);
+      
+      if (combinedData.length) {
+        Charts.createScatterPlot('scatterPlot', combinedData);
+      }
+    }
+  } catch (error) {
+    console.error('Error updating scatter plot:', error);
   }
 }
 

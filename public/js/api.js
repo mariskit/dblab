@@ -2,9 +2,7 @@ class CovidAPI {
   static async getGlobalStats() {
     try {
       const response = await fetch('/api/stats');
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
       return await response.json();
     } catch (error) {
       console.error('Error fetching global stats:', error);
@@ -19,12 +17,17 @@ class CovidAPI {
 
   static async getTimeSeriesData(country, metric, period = 'allTime') {
     try {
-      const url = `/api/time-series?${country ? `country=${encodeURIComponent(country)}&` : ''}metric=${metric}&period=${period}`;
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+      // Para "All Countries", sumamos los datos de todos los países
+      if (!country) {
+        const response = await fetch(`/api/global-time-series?metric=${metric}&period=${period}`);
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        return await response.json();
+      } else {
+        const url = `/api/time-series?country=${encodeURIComponent(country)}&metric=${metric}&period=${period}`;
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        return await response.json();
       }
-      return await response.json();
     } catch (error) {
       console.error(`Error fetching time series for ${metric}:`, error);
       return [];

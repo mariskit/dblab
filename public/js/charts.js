@@ -9,122 +9,205 @@ class Charts {
       container.innerHTML = '<p class="no-data">No data available</p>';
       return;
     }
-
+  
+    // Asegurar que los datos estén ordenados por fecha
+    data.sort((a, b) => new Date(a.RecordDate) - new Date(b.RecordDate));
+  
+    // Para métricas de totales, asegurar que no decrezcan
+    if (['TotalCases', 'TotalDeaths', 'TotalVaccinations'].includes(metric)) {
+      let maxValue = 0;
+      data = data.map(d => {
+        const currentValue = d[metric] || 0;
+        maxValue = Math.max(maxValue, currentValue);
+        return {
+          ...d,
+          [metric]: maxValue
+        };
+      });
+    }
+  
     // Obtener dimensiones reales del contenedor
     const width = container.clientWidth;
     const height = container.clientHeight;
     
     // Ajustar márgenes proporcionalmente
-    this.margin = { 
+    const margin = { 
       top: 20, 
       right: Math.min(50, width * 0.1), 
       bottom: Math.min(60, height * 0.2), 
       left: Math.min(70, width * 0.15) 
     };
     
-    const innerWidth = width - this.margin.left - this.margin.right;
-    const innerHeight = height - this.margin.top - this.margin.bottom;
-
+    const innerWidth = width - margin.left - margin.right;
+    const innerHeight = height - margin.top - margin.bottom;
+  
+    // Crear SVG
     const svg = d3.select(container)
       .append('svg')
       .attr('width', width)
-      .attr('height', height);
-
+      .attr('height', height)
+      .attr('viewBox', `0 0 ${width} ${height}`)
+      .attr('preserveAspectRatio', 'xMidYMid meet');
+  
     const g = svg.append('g')
-      .attr('transform', `translate(${this.margin.left},${this.margin.top})`);
-
-    // Parse dates
+      .attr('transform', `translate(${margin.left},${margin.top})`);
+  
+    // Parse dates and clean metric name
     const parseDate = d3.timeParse('%Y-%m-%d');
     const cleanMetric = metric.replace('_', '');
     data.forEach(d => {
       d.RecordDate = parseDate(d.RecordDate);
       d[cleanMetric] = +d[metric];
     });
-
+  
     // Set scales
     const x = d3.scaleTime()
       .domain(d3.extent(data, d => d.RecordDate))
-      .range([0, innerWidth]);
-
+      .range([0, innerWidth])
+      .nice();
+  
     const y = d3.scaleLinear()
-      .domain([0, d3.max(data, d => d[cleanMetric])])
-      .nice()
-      .range([innerHeight, 0]);
-
+      .domain([0, d3.max(data, d => d[cleanMetric]) * 1.05]) // +5% para espacio arriba
+      .range([innerHeight, 0])
+      .nice();
+  
     // Formateadores para ejes
     const formatLargeNumber = d3.format(".2s");
     const formatDate = d3.timeFormat("%b '%y");
-
+  
     // Create line generator
     const line = d3.line()
       .x(d => x(d.RecordDate))
       .y(d => y(d[cleanMetric]))
       .curve(d3.curveMonotoneX);
-
-    // Configurar eje X con mejor espaciado
-    g.append('g')
+  
+    // Configurar eje X
+    const xAxis = g.append('g')
       .attr('class', 'axis axis--x')
       .attr('transform', `translate(0,${innerHeight})`)
       .call(d3.axisBottom(x)
         .ticks(Math.min(8, Math.floor(width / 80)))
-        .tickFormat(formatDate))
-      .selectAll("text")
+        .tickFormat(formatDate));
+  
+    // Rotar etiquetas del eje X si es necesario
+    xAxis.selectAll("text")
       .style("text-anchor", "end")
       .attr("dx", "-.8em")
       .attr("dy", ".15em")
       .attr("transform", "rotate(-45)");
-
-    // Configurar eje Y con formato para números grandes
-    g.append('g')
+  
+    // Configurar eje Y
+    const yAxis = g.append('g')
       .attr('class', 'axis axis--y')
       .call(d3.axisLeft(y)
         .ticks(Math.min(6, Math.floor(height / 50)))
-        .tickFormat(d => d > 1000 ? formatLargeNumber(d) : d))
-      .append('text')
+        .tickFormat(d => d > 1000 ? formatLargeNumber(d) : d));
+  
+    // Etiqueta del eje Y
+    yAxis.append('text')
       .attr('fill', '#000')
       .attr('transform', 'rotate(-90)')
-      .attr('y', -this.margin.left + 15)
+      .attr('y', -margin.left + 15)
       .attr('x', -innerHeight / 2)
       .attr('text-anchor', 'middle')
-      .text(cleanMetric.replace(/([A-Z])/g, ' $1'));
-
+      .text(cleanMetric.replace(/([A-Z])/g, ' $1').trim());
+  
+    // Add grid lines
+    g.append('g')
+      .attr('class', 'grid')
+      .call(d3.axisLeft(y)
+        .ticks(Math.min(6, Math.floor(height / 50)))
+        .tickSize(-innerWidth)
+        .tickFormat(''))
+      .selectAll('.tick line')
+      .attr('stroke', '#e0e0e0')
+      .attr('stroke-dasharray', '2,2');
+  
     // Add line path
     g.append('path')
       .datum(data)
       .attr('class', 'line')
       .attr('d', line)
-      .attr('stroke', 'steelblue')
+      .attr('stroke', '#3498db')
       .attr('stroke-width', 2)
       .attr('fill', 'none');
-
+  
+    // Add area under line for better visual perception
+    const area = d3.area()
+      .x(d => x(d.RecordDate))
+      .y0(innerHeight)
+      .y1(d => y(d[cleanMetric]))
+      .curve(d3.curveMonotoneX);
+  
+    g.append('path')
+      .datum(data)
+      .attr('class', 'area')
+      .attr('d', area)
+      .attr('fill', 'rgba(52, 152, 219, 0.2)')
+      .attr('stroke', 'none');
+  
     // Add dots with tooltip
-    g.selectAll('.dot')
+    const dots = g.selectAll('.dot')
       .data(data)
       .enter().append('circle')
       .attr('class', 'dot')
       .attr('cx', d => x(d.RecordDate))
       .attr('cy', d => y(d[cleanMetric]))
       .attr('r', 3)
-      .attr('fill', 'steelblue')
-      .on('mouseover', function(event, d) {
-        d3.select(this).attr('r', 6).attr('fill', 'orange');
+      .attr('fill', '#3498db');
+  
+    // Tooltip behavior
+    dots.on('mouseover', function(event, d) {
+      d3.select(this)
+        .attr('r', 6)
+        .attr('fill', '#e74c3c');
+      
+      const tooltip = d3.select('body').append('div')
+        .attr('class', 'tooltip')
+        .html(`
+          <strong>${d3.timeFormat('%b %d, %Y')(d.RecordDate)}</strong><br/>
+          ${cleanMetric.replace(/([A-Z])/g, ' $1')}: ${d[cleanMetric].toLocaleString()}
+        `)
+        .style('left', (event.pageX + 10) + 'px')
+        .style('top', (event.pageY - 10) + 'px');
+    })
+    .on('mouseout', function() {
+      d3.select(this)
+        .attr('r', 3)
+        .attr('fill', '#3498db');
+      d3.select('.tooltip').remove();
+    });
+  
+    // Responsive behavior
+    const resizeObserver = new ResizeObserver(entries => {
+      for (let entry of entries) {
+        const { width: newWidth, height: newHeight } = entry.contentRect;
         
-        d3.select('body').append('div')
-          .attr('class', 'tooltip')
-          .html(`<strong>${d3.timeFormat('%b %d, %Y')(d.RecordDate)}</strong><br/>
-                 ${cleanMetric.replace(/([A-Z])/g, ' $1')}: ${d[cleanMetric].toLocaleString()}`)
-          .style('left', (event.pageX + 10) + 'px')
-          .style('top', (event.pageY - 10) + 'px');
-      })
-      .on('mousemove', function(event) {
-        d3.select('.tooltip')
-          .style('left', (event.pageX + 10) + 'px')
-          .style('top', (event.pageY - 10) + 'px');
-      })
-      .on('mouseout', function() {
-        d3.select(this).attr('r', 3).attr('fill', 'steelblue');
-        d3.select('.tooltip').remove();
-      });
+        // Update SVG dimensions
+        svg
+          .attr('width', newWidth)
+          .attr('height', newHeight);
+        
+        // Update scales
+        x.range([0, newWidth - margin.left - margin.right]);
+        y.range([newHeight - margin.top - margin.bottom, 0]);
+        
+        // Update axes
+        xAxis.call(d3.axisBottom(x).ticks(Math.min(8, Math.floor(newWidth / 80))));
+        yAxis.call(d3.axisLeft(y).ticks(Math.min(6, Math.floor(newHeight / 50))));
+        
+        // Update line and area
+        svg.select('.line').attr('d', line);
+        svg.select('.area').attr('d', area);
+        
+        // Update dots position
+        dots
+          .attr('cx', d => x(d.RecordDate))
+          .attr('cy', d => y(d[cleanMetric]));
+      }
+    });
+  
+    resizeObserver.observe(container);
   }
 
     static createTimeSeriesChart(containerId, data, metric) {
