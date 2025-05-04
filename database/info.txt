@@ -1,0 +1,9 @@
+-Init.sql tiene el script para crear la base
+-Cuando se crea se importa todo el dataset usando el import wizard, eso crea una tabla extra con todos los registros del dataset
+-Los registros se normalizan con normalize.sql
+
+Nota:la base de datos se usa desde azure
+      Login: 'covidadmin@covid-dashboard-sql-server',
+      password: 'P4ssw0rd!Seguro'
+      server: 'covid-dashboard-sql-server.database.windows.net'
+      database: 'covid-dashboard-db'
