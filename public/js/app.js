@@ -177,17 +177,76 @@ async function updateScatterPlot(geoData, period) {
   }
 }
 
-// Inicialización de la aplicación
-document.addEventListener('DOMContentLoaded', () => {
-  // Configurar evento de actualización
+document.addEventListener('DOMContentLoaded', async () => {
+  // 1. Configura el evento del botón (si existe)
   const updateButton = document.getElementById('updateCharts');
   if (updateButton) {
     updateButton.addEventListener('click', updateCharts);
   }
-  
-  // Cargar datos iniciales
-  loadInitialData();
-  
-  // Actualizar automáticamente cada 5 minutos
-  setInterval(loadInitialData, 5 * 60 * 1000);
+
+  // 2. Inicializa el dashboard automáticamente
+  try {
+    // Cargar datos básicos primero
+    const [stats, countries] = await Promise.all([
+      CovidAPI.getGlobalStats(),
+      CovidAPI.getCountriesList()
+    ]);
+    
+    updateDataUI(stats);
+    updateCountriesDropdown(countries);
+    
+    // 3. Cargar los gráficos (equivalente a pulsar "Update Charts")
+    await updateCharts();
+    
+  } catch (error) {
+    console.error('Error inicializando:', error);
+    showErrorNotification('Error al cargar datos iniciales');
+  }
 });
+
+async function initializeDashboard() {
+  setLoadingState(true);
+  
+  try {
+    // 1. Cargar datos esenciales en paralelo
+    const [statsResponse, countriesResponse] = await Promise.all([
+      CovidAPI.getGlobalStats(),
+      CovidAPI.getCountriesList()
+    ]);
+
+    // 2. Actualizar la interfaz
+    updateDataUI(statsResponse);
+    updateCountriesDropdown(countriesResponse);
+
+    // 3. Establecer "All Countries" como selección predeterminada
+    const countrySelect = document.getElementById('countrySelect');
+    if (countrySelect) {
+      countrySelect.value = '';
+    }
+
+    // 4. Cargar gráficos iniciales con valores por defecto
+    await loadInitialCharts();
+    
+  } catch (error) {
+    console.error('Error inicializando dashboard:', error);
+    showErrorNotification('Error al cargar datos iniciales');
+  } finally {
+    setLoadingState(false);
+  }
+}
+
+async function loadInitialCharts() {
+  // Configuración inicial
+  const initialMetric = 'TotalCases';
+  const initialPeriod = 'allTime';
+  
+  // Establecer valores en los controles (si existen)
+  const metricSelect = document.getElementById('metricSelect');
+  const periodSelect = document.getElementById('timePeriod');
+  
+  if (metricSelect) metricSelect.value = initialMetric;
+  if (periodSelect) periodSelect.value = initialPeriod;
+
+  // Cargar los gráficos
+  await updateCharts();
+}
