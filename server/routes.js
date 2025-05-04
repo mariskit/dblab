@@ -8,17 +8,32 @@ router.get('/api/global-time-series', async (req, res) => {
     const validMetrics = ['TotalCases', 'NewCases', 'TotalDeaths', 'NewDeaths', 'TotalVaccinations'];
     
     if (!validMetrics.includes(metric)) {
-      return res.status(400).json({ error: 'Métrica no válida' });
+      return res.status(400).json({ error: 'Invalid metric parameter' });
     }
 
-    // Configurar timeout extendido
+    // Configurar condiciones de fecha según el período seleccionado
+    let dateCondition = '';
+    switch(period) {
+      case 'last3Years':
+        dateCondition = "AND RecordDate >= DATEADD(YEAR, -3, GETDATE())";
+        break;
+      case 'last2Years':
+        dateCondition = "AND RecordDate >= DATEADD(YEAR, -2, GETDATE())";
+        break;
+      case 'lastYear':
+        dateCondition = "AND RecordDate >= DATEADD(YEAR, -1, GETDATE())";
+        break;
+      case 'allTime':
+      default:
+        dateCondition = "";
+    }
+
     const pool = await poolPromise;
     pool.config.requestTimeout = 30000;
 
     if (metric.startsWith('Total')) {
       // Consulta optimizada para métricas acumulativas
       const result = await pool.request().query(`
-        -- Paso 1: Obtener el último valor no nulo por país y fecha
         WITH UltimosValores AS (
           SELECT 
             CountryCode,
@@ -30,11 +45,9 @@ router.get('/api/global-time-series', async (req, res) => {
             ) AS rn
           FROM CovidData
           WHERE ${metric} IS NOT NULL AND ${metric} > 0
-          ${period === 'lastYear' ? "AND RecordDate >= DATEADD(YEAR, -1, GETDATE())" : ""}
-          ${period === 'last6Months' ? "AND RecordDate >= DATEADD(MONTH, -6, GETDATE())" : ""}
+          ${dateCondition}
         )
         
-        -- Paso 2: Sumar por fecha y calcular máximo acumulado
         SELECT 
           FORMAT(RecordDate, 'yyyy-MM-dd') AS RecordDate,
           SUM(CAST(${metric} AS FLOAT)) AS ${metric}
@@ -63,8 +76,7 @@ router.get('/api/global-time-series', async (req, res) => {
           SUM(CAST(${metric} AS FLOAT)) AS ${metric}
         FROM CovidData
         WHERE ${metric} IS NOT NULL
-        ${period === 'lastYear' ? "AND RecordDate >= DATEADD(YEAR, -1, GETDATE())" : ""}
-        ${period === 'last6Months' ? "AND RecordDate >= DATEADD(MONTH, -6, GETDATE())" : ""}
+        ${dateCondition}
         GROUP BY RecordDate
         ORDER BY RecordDate
       `);
@@ -132,11 +144,21 @@ router.get('/api/time-series', async (req, res) => {
       return res.status(400).json({ error: 'Invalid metric parameter' });
     }
 
+    // Configurar condición de tiempo
     let dateCondition = '';
-    if (period === 'lastYear') {
-      dateCondition = 'AND RecordDate >= DATEADD(YEAR, -1, GETDATE())';
-    } else if (period === 'last6Months') {
-      dateCondition = 'AND RecordDate >= DATEADD(MONTH, -6, GETDATE())';
+    switch(period) {
+      case 'last3Years':
+        dateCondition = "AND RecordDate >= DATEADD(YEAR, -3, GETDATE())";
+        break;
+      case 'last2Years':
+        dateCondition = "AND RecordDate >= DATEADD(YEAR, -2, GETDATE())";
+        break;
+      case 'lastYear':
+        dateCondition = "AND RecordDate >= DATEADD(YEAR, -1, GETDATE())";
+        break;
+      case 'allTime':
+      default:
+        dateCondition = "";
     }
 
     const pool = await poolPromise;
@@ -158,13 +180,27 @@ router.get('/api/time-series', async (req, res) => {
 
     const result = await request.query(query);
     
-    const formattedData = result.recordset.map(item => ({
-      CountryName: item.CountryName,
-      RecordDate: item.RecordDate,
-      [metric]: item.Value
-    }));
+    // Para métricas acumulativas, asegurar no decrecimiento
+    let processedData = result.recordset;
+    if (metric.startsWith('Total')) {
+      let maxValue = 0;
+      processedData = result.recordset.map(item => {
+        maxValue = Math.max(maxValue, item.Value || 0);
+        return {
+          CountryName: item.CountryName,
+          RecordDate: item.RecordDate,
+          [metric]: maxValue
+        };
+      });
+    } else {
+      processedData = result.recordset.map(item => ({
+        CountryName: item.CountryName,
+        RecordDate: item.RecordDate,
+        [metric]: item.Value || 0
+      }));
+    }
     
-    res.json(formattedData);
+    res.json(processedData);
   } catch (err) {
     console.error('Error en time-series:', {
       message: err.message,
